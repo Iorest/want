@@ -1,0 +1,85 @@
+---
+name: want
+description: Query Wolfram|Alpha for exact math, unit and currency conversion, physical constants, and curated factual data about people, places, chemistry, astronomy, history, health and finance. Use when a question needs a computed or authoritative answer rather than recall — arithmetic, symbolic integration, equation solving, dated statistics, prices, distances, chemical properties, weather, rankings, comparisons, natural-language questions ("how many people live in France", "how tall is Everest in feet"). Triggers include "calculate", "convert", "how much", "how many", "what is the value of", "solve", "integrate", 计算/换算/求解/多少/密度/人口/价格.
+---
+
+# want — Wolfram|Alpha Network Tool
+
+Wolfram|Alpha computes answers instead of guessing them. For anything numeric,
+unit-bearing, date-sensitive or encyclopedic, call `want` before answering from
+memory.
+
+## Ask in plain language
+
+Wolfram|Alpha parses natural language. Ask the question the way a person would:
+"how many people live in France", "how tall is Mount Everest in feet", "what is
+the GDP of Japan in 2025". Do not pre-chew it into keywords unless the natural
+phrasing fails — keyword form (`France population`) is the fallback, not the rule.
+
+- English is the input language. For a non-English question, translate it to
+  English first, then answer the user in their own language.
+- Add `--lang <code>` (`zh`, `de`, `fr`, …) to get the *answer* localised, e.g.
+  `want --lang zh short "capital of France"` → `法国，法兰西岛大区，巴黎`.
+- `--units` takes exactly `metric` or `nonmetric`; anything else is rejected before
+  the request, because the API would silently answer in the caller-IP units.
+- One property per call: "Mars mass" then "Mars gravity", not "Mars facts".
+
+## Picking the call
+
+| Need | Use |
+| --- | --- |
+| One value, one line | `want_short` / `want short` |
+| Prose, table, comparison, multi-property answer | `want_ask` / `want ask` (default) |
+| One specific named section, or bounded output | `want_pods` with `primary: true` or `pod_titles` / `want pods --primary` |
+| Every machine-readable subtopic | `want pods --json` (CLI only) |
+
+Inside an MCP-capable agent the tools `want_ask`, `want_short`, `want_pods` are
+available directly. Otherwise shell out:
+
+```sh
+want ask "how many people live in France"
+want short "speed of light"
+want pods --primary "integrate x^2 sin(x) dx"
+want pods --pod "Physical properties" "Mars"
+want --lang zh short "capital of France"
+```
+
+Pod titles are exact (`Result`, `Physical properties`, `Indefinite integral`), with
+`*` as the only wildcard. Do not guess a title — use `--primary` or query without a
+filter once to read the real titles.
+
+## Reading the answer
+
+- `want_ask` and `want_pods` end with a provenance line:
+  `— Wolfram|Alpha full-results 2.6 · fetched 2026-10-22T05:25:48Z · query "…"`.
+  Keep the date when the value could change (prices, populations, records) and cite
+  it; drop it for timeless math. `want_short` returns the bare value, no footer.
+- Sections are `## Title` blocks; rows are `|`-separated; powers use `^`
+  (`6.417 × 10^23`), never `6e14`.
+- `image: <url>` lines are plots, diagrams and tables that exist only as pictures.
+  Pass them through when the user wants visuals; the URL is public and absolute.
+- `want_ask` output is already model-shaped — do not reformat tables into prose.
+
+## If a call fails
+
+Work down this ladder. A failed tool call comes back with `isError: true` and a
+"Next step:" line; the ladder is the same.
+
+1. Read the message. `501` and `didyoumeans` usually carry "Things to try instead:"
+   with real alternative phrasings.
+2. Retry **once** with different wording. Never resend the identical string — the
+   server caches it and you burn quota for the same answer.
+3. Ambiguous query — add context (`Mars planet` vs `Mars mythology`) or pass the
+   `assumption` value from the previous response.
+4. Still failing? Answer from your own knowledge and say the Wolfram|Alpha lookup
+   failed. `401/403` means the user must set `WOLFRAM_APPID`; `429` means the monthly
+   quota is gone. Both are worth telling the user once, not retrying.
+   On the command line the exit code says the same thing without parsing: `3` =
+   rephrase, `4` = key or quota, `1` = anything else, `0` = answered.
+5. Never invent a number, a date or a citation to cover a failed call.
+
+## Cost
+
+Every call spends the same monthly quota (2,000 on the free tier). `want_short` is
+the cheapest. Over MCP the server caches identical queries for 5 minutes, so a
+repeat of the exact same string is free — a *reworded* query is not.

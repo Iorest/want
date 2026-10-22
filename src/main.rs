@@ -1,0 +1,400 @@
+//! `want` — Wolfram|Alpha Network Tool.
+//!
+//! One binary with three faces: a CLI (and REPL) for humans, a `want mcp` stdio
+//! server for agents, and `want skill` which prints the SKILL.md agents load.
+
+mod client;
+mod mcp;
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+use tracing::level_filters::LevelFilter;
+
+use crate::client::{Client, Opts};
+
+/// Shipped verbatim so the file in the repo is the single source of truth.
+const SKILL_MD: &str = include_str!("../skills/want/SKILL.md");
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "want",
+    version,
+    about = "Wolfram|Alpha Network Tool — an AI-native W|A CLI, REPL and MCP server",
+    after_help = "Examples:\n  want ask \"density of osmium\"\n  want short \"population of France\"\n  \
+                  want pods --primary \"integrate x^2 sin(x)\"\n  want image \"plot sin(x)/x\" -o plot.gif\n  \
+                  want                       # REPL\n  \
+                  \nAgent setup (see README for Codex and opencode):\n  \
+                  claude mcp add -s user want -e WOLFRAM_APPID=<id> -- want mcp\n  \
+                  want skill --install       # or: npx skills add <owner>/want -g\n  \
+                  \nUndo:\n  claude mcp remove want\n  want skill --uninstall\n  \
+                  \nExit codes: 0 ok, 2 usage, 3 query not understood, 4 auth or quota, 1 other"
+)]
+struct Cli {
+    /// Wolfram|Alpha AppID; also read from WOLFRAM_APPID
+    #[arg(long, global = true, env = "WOLFRAM_APPID", hide_env_values = true)]
+    appid: Option<String>,
+
+    /// Log verbosity on stderr: -v info, -vv debug. RUST_LOG takes precedence
+    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
+    verbose: u8,
+
+    /// Unit system: metric or nonmetric; defaults by caller IP
+    #[arg(long, global = true, value_parser = ["metric", "nonmetric"])]
+    units: Option<String>,
+
+    /// Output language for answers and pod titles, e.g. zh, de, fr. The query itself stays English
+    #[arg(long, global = true)]
+    lang: Option<String>,
+
+    /// Drop the provenance footer (endpoint, fetch time, query)
+    #[arg(long, global = true)]
+    no_source: bool,
+
+    /// Reuse an identical response for N seconds; 0 disables. Default 0 for one-shot
+    /// commands, 300 for the REPL and `want mcp`
+    #[arg(long, global = true)]
+    cache_ttl: Option<u64>,
+
+    #[command(subcommand)]
+    cmd: Option<Cmd>,
+}
+
+#[derive(Debug, Subcommand)]
+enum Cmd {
+    /// Ask via the LLM API; plain text already shaped for a language model (the agent default)
+    #[command(visible_alias = "q")]
+    Ask {
+        /// Natural-language question. English keyword forms work best
+        query: String,
+        /// Character cap on the answer; the API default is ~6800
+        #[arg(long)]
+        maxchars: Option<u32>,
+        /// Force an interpretation, taken from a previous response's didyoumeans
+        #[arg(long)]
+        assumption: Option<String>,
+    },
+    /// One-line answer via the Short Answers API; the cheapest call
+    Short {
+        /// A question with a single-value answer
+        query: String,
+    },
+    /// Structured pods via the Full Results API, rendered as markdown
+    Pods {
+        /// Query
+        query: String,
+        /// Keep only pods whose title matches exactly; repeatable, * is a wildcard
+        #[arg(long = "pod", value_name = "TITLE")]
+        pod: Vec<String>,
+        /// Keep only the pod Wolfram|Alpha marks as primary
+        #[arg(long, conflicts_with = "json")]
+        primary: bool,
+        /// Force an interpretation, taken from a previous response's didyoumeans
+        #[arg(long)]
+        assumption: Option<String>,
+        /// Print the raw Full Results JSON instead of markdown, keeping every subpod type
+        #[arg(long)]
+        json: bool,
+    },
+    /// Render one image via the Simple API and save it to disk
+    Image {
+        /// Query, e.g. "plot sin(x)/x from -10 to 10"
+        query: String,
+        /// Output path; defaults to want.gif / want.png by image type
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Interactive REPL; also the default when no subcommand is given
+    Repl {
+        /// Endpoint used for each query
+        #[arg(long, value_enum, default_value_t = Mode::Ask)]
+        mode: Mode,
+    },
+    /// Serve MCP over stdio
+    Mcp,
+    /// Print SKILL.md, install it into the agent skill directories, or remove it again
+    Skill {
+        /// Write SKILL.md into the skills directories instead of printing it
+        #[arg(long, group = "skill_action")]
+        install: bool,
+        /// Remove the installed SKILL.md and leave everything else alone
+        #[arg(long, group = "skill_action")]
+        uninstall: bool,
+        /// Skills root to act on; repeatable. Defaults to ~/.claude/skills and ~/.agents/skills
+        #[arg(long, value_name = "DIR", requires = "skill_action")]
+        dir: Vec<PathBuf>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum Mode {
+    Ask,
+    Short,
+    Pods,
+    Image,
+}
+
+#[tokio::main]
+async fn main() {
+    if let Err(err) = run().await {
+        eprintln!("Error: {err:#}");
+        std::process::exit(exit_code(&err));
+    }
+}
+
+/// Exit codes a script can branch on: 3 means "rephrase", 4 means "fix the key
+/// or wait for the quota to reset".
+fn exit_code(err: &anyhow::Error) -> i32 {
+    match err
+        .downcast_ref::<client::Failure>()
+        .map(client::Failure::kind)
+    {
+        Some(client::Kind::Uninterpretable) => 3,
+        Some(client::Kind::Access) => 4,
+        _ => 1,
+    }
+}
+
+/// Build the command, then hide the network options from the one subcommand that
+/// cannot use them: globals are inherited by every subcommand, so `want skill
+/// --help` would otherwise advertise `--appid`, `--units`, `--lang` and friends.
+fn parse_cli() -> Cli {
+    let mut command = Cli::command();
+    command.build();
+
+    let matches = command
+        .mut_subcommand("skill", |skill| skill.mut_args(hide_from_skill))
+        .get_matches();
+
+    Cli::from_arg_matches(&matches).unwrap_or_else(|err| err.exit())
+}
+
+fn hide_from_skill(arg: clap::Arg) -> clap::Arg {
+    match arg.get_id().as_str() {
+        "appid" | "units" | "lang" | "no_source" | "cache_ttl" => arg.hide(true),
+        _ => arg,
+    }
+}
+
+async fn run() -> Result<()> {
+    let cli = parse_cli();
+
+    // stdout is the MCP channel, so all logging goes to stderr.
+    let level = match cli.verbose {
+        0 => LevelFilter::WARN,
+        1 => LevelFilter::INFO,
+        _ => LevelFilter::DEBUG,
+    };
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::builder()
+                .with_default_directive(level.into())
+                .from_env_lossy(),
+        )
+        .with_writer(std::io::stderr)
+        .init();
+
+    if std::env::args().any(|arg| arg == "--appid" || arg.starts_with("--appid=")) {
+        tracing::warn!(
+            "--appid is visible in the process list; prefer the WOLFRAM_APPID environment variable"
+        );
+    }
+
+    // `want skill` is pure stdout plus optional file writes, no network, so it
+    // must not demand an AppID.
+    if let Some(Cmd::Skill {
+        install,
+        uninstall,
+        dir,
+    }) = &cli.cmd
+    {
+        return skill(*install, *uninstall, dir);
+    }
+
+    // DEMO is no longer accepted by the API, so a missing AppID is a hard error
+    // pointing at the free signup instead of a confusing 401.
+    let appid = cli.appid.context(
+        "No Wolfram|Alpha AppID. Get a free one at https://developer.wolframalpha.com, \
+         then export WOLFRAM_APPID=xxxx or pass --appid xxxx",
+    )?;
+
+    let client = Arc::new(Client::new(&appid)?);
+    let opts = Opts {
+        units: cli.units.clone(),
+        lang: cli.lang.clone(),
+        no_source: cli.no_source,
+        cache_ttl: cli.cache_ttl.unwrap_or(0),
+        assumption: None,
+    };
+
+    // A long-lived mode caches by default: repeating a query there is common.
+    let live_opts = || Opts {
+        cache_ttl: cli.cache_ttl.unwrap_or(300),
+        ..opts.clone()
+    };
+
+    match cli.cmd {
+        None => repl(&client, Mode::Ask, &live_opts()).await?,
+        Some(Cmd::Repl { mode }) => repl(&client, mode, &live_opts()).await?,
+        Some(Cmd::Ask {
+            query,
+            maxchars,
+            assumption,
+        }) => {
+            let opts = Opts { assumption, ..opts };
+            println!("{}", client.llm(&query, &opts, maxchars).await?)
+        }
+        Some(Cmd::Short { query }) => println!("{}", client.short(&query, &opts).await?),
+        Some(Cmd::Pods {
+            query,
+            pod,
+            primary,
+            assumption,
+            json,
+        }) => {
+            let opts = Opts { assumption, ..opts };
+            if json {
+                println!("{}", client.pods_json(&query, &opts, &pod).await?)
+            } else {
+                println!("{}", client.pods(&query, &opts, &pod, primary).await?)
+            }
+        }
+        Some(Cmd::Image { query, output }) => {
+            println!(
+                "{}",
+                save_image(&client, &query, &opts, output).await?.display()
+            )
+        }
+        Some(Cmd::Mcp) => mcp::serve(client, &live_opts()).await?,
+        Some(Cmd::Skill { .. }) => unreachable!("handled before the AppID check"),
+    }
+
+    Ok(())
+}
+
+/// Print the skill, write it where every supported agent looks for it, or take it back.
+///
+/// `~/.claude/skills` is Claude Code's own path; `~/.agents/skills` is read by
+/// Codex (user scope) and by opencode (agent-compatible path), so those two
+/// cover Claude Code, opencode and Codex with one install.
+fn skill(install: bool, uninstall: bool, dirs: &[PathBuf]) -> Result<()> {
+    if !install && !uninstall {
+        print!("{SKILL_MD}");
+        return Ok(());
+    }
+
+    let roots: Vec<PathBuf> = if dirs.is_empty() {
+        let home = home::home_dir().context("cannot determine the home directory")?;
+        vec![home.join(".claude/skills"), home.join(".agents/skills")]
+    } else {
+        dirs.to_vec()
+    };
+
+    for root in roots {
+        let dir = root.join("want");
+        let path = dir.join("SKILL.md");
+
+        if uninstall {
+            if !path.exists() {
+                println!("not installed: {}", path.display());
+                continue;
+            }
+            std::fs::remove_file(&path)
+                .with_context(|| format!("failed to remove {}", path.display()))?;
+            // Only drop the folder if nothing else lives there.
+            let _ = std::fs::remove_dir(&dir);
+            println!("removed {}", path.display());
+            continue;
+        }
+
+        std::fs::create_dir_all(&dir)
+            .with_context(|| format!("failed to create {}", dir.display()))?;
+        std::fs::write(&path, SKILL_MD)
+            .with_context(|| format!("failed to write {}", path.display()))?;
+        println!("{}", path.display());
+    }
+
+    Ok(())
+}
+
+/// Multi-turn prompt loop, mirroring `wolfram-cli`'s no-subcommand REPL.
+async fn repl(client: &Client, mode: Mode, opts: &Opts) -> Result<()> {
+    eprintln!(
+        "want {} — {:?} mode, Ctrl-D or :quit to exit",
+        env!("CARGO_PKG_VERSION"),
+        mode
+    );
+
+    let mut rl = rustyline::DefaultEditor::new().context("failed to start the REPL")?;
+    while let Some(line) = prompt(&mut rl) {
+        let query = line.trim();
+        if query.is_empty() {
+            continue;
+        }
+        if matches!(query, ":q" | ":quit" | ":exit" | "quit" | "exit") {
+            break;
+        }
+
+        let _ = rl.add_history_entry(query);
+
+        match ask_once(client, mode, opts, query).await {
+            Ok(answer) => println!("{answer}\n"),
+            Err(err) => eprintln!("error: {err:#}"),
+        }
+    }
+
+    Ok(())
+}
+
+/// `None` on EOF or a hard read error; Ctrl-C just gives a fresh prompt.
+fn prompt(rl: &mut rustyline::DefaultEditor) -> Option<String> {
+    loop {
+        match rl.readline("want> ") {
+            Ok(line) => return Some(line),
+            Err(rustyline::error::ReadlineError::Interrupted) => continue,
+            Err(_) => return None,
+        }
+    }
+}
+
+/// One REPL turn: dispatch the typed line to the endpoint the REPL is in.
+async fn ask_once(client: &Client, mode: Mode, opts: &Opts, query: &str) -> Result<String> {
+    match mode {
+        Mode::Ask => client.llm(query, opts, None).await,
+        Mode::Short => client.short(query, opts).await,
+        Mode::Pods => client.pods(query, opts, &[], false).await,
+        Mode::Image => Ok(save_image(client, query, opts, None)
+            .await?
+            .display()
+            .to_string()),
+    }
+}
+
+/// Render one image to disk. Without an explicit `-o` the name is numbered, so a
+/// later picture never overwrites an earlier one.
+async fn save_image(
+    client: &Client,
+    query: &str,
+    opts: &Opts,
+    output: Option<PathBuf>,
+) -> Result<PathBuf> {
+    let (bytes, ext) = client.image(query, opts).await?;
+
+    let path = match output {
+        Some(path) => path,
+        None => {
+            let mut candidate = PathBuf::from(format!("want.{ext}"));
+            let mut n = 1;
+            while candidate.exists() {
+                candidate = PathBuf::from(format!("want-{n}.{ext}"));
+                n += 1;
+            }
+            candidate
+        }
+    };
+
+    std::fs::write(&path, bytes).with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(path)
+}
