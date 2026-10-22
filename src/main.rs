@@ -74,9 +74,6 @@ enum Cmd {
         /// Character cap on the answer; the API default is ~6800
         #[arg(long)]
         maxchars: Option<u32>,
-        /// Force an interpretation, taken from a previous response's didyoumeans
-        #[arg(long)]
-        assumption: Option<String>,
     },
     /// One-line answer via the Short Answers API; the cheapest call
     Short {
@@ -93,7 +90,8 @@ enum Cmd {
         /// Keep only the pod Wolfram|Alpha marks as primary
         #[arg(long, conflicts_with = "json")]
         primary: bool,
-        /// Force an interpretation, taken from a previous response's didyoumeans
+        /// Force an interpretation, taken from a previous response's didyoumeans.
+        /// Only the Full Results API honours this; `ask` cannot be disambiguated
         #[arg(long)]
         assumption: Option<String>,
         /// Print the raw Full Results JSON instead of markdown, keeping every subpod type
@@ -257,12 +255,7 @@ async fn run() -> Result<()> {
     match cli.cmd {
         None => repl(&client, Mode::Ask, &live_opts()).await?,
         Some(Cmd::Repl { mode }) => repl(&client, mode, &live_opts()).await?,
-        Some(Cmd::Ask {
-            query,
-            maxchars,
-            assumption,
-        }) => {
-            let opts = Opts { assumption, ..opts };
+        Some(Cmd::Ask { query, maxchars }) => {
             println!("{}", client.llm(&query, &opts, maxchars).await?)
         }
         Some(Cmd::Short { query }) => println!("{}", client.short(&query, &opts).await?),

@@ -30,7 +30,13 @@ phrasing fails — keyword form (`France population`) is the fallback, not the r
 | --- | --- |
 | One value, one line | `want_short` / `want short` |
 | Prose, table, comparison, multi-property answer | `want_ask` / `want ask` (default) |
+| **Every** section Wolfram|Alpha has, not a digest | `want_pods` / `want pods` |
 | One specific named section, or bounded output | `want_pods` with `primary: true` or `pod_titles` / `want pods --primary` |
+
+`want_ask` is a digest: Wolfram|Alpha selects the sections that fit an LLM. Asking
+for "all properties" of an animal or a chemical returns noticeably less than the
+website shows — e.g. `Biological properties` is missing for `chicken`. When the user
+wants the complete card, use `want_pods`, which returns every pod.
 | Every machine-readable subtopic | `want pods --json` (CLI only) |
 
 Inside an MCP-capable agent the tools `want_ask`, `want_short`, `want_pods` are
@@ -56,6 +62,9 @@ filter once to read the real titles.
   it; drop it for timeless math. `want_short` returns the bare value, no footer.
 - Sections are `## Title` blocks; rows are `|`-separated; powers use `^`
   (`6.417 × 10^23`), never `6e14`.
+- A trailing `(2 section(s) did not finish in time and are missing)` means the
+  answer is partial — re-run the same query once; it is a server-side deadline,
+  not a bad query.
 - `image: <url>` lines are plots, diagrams and tables that exist only as pictures.
   Pass them through when the user wants visuals; the URL is public and absolute.
 - `want_ask` output is already model-shaped — do not reformat tables into prose.
@@ -69,8 +78,10 @@ Work down this ladder. A failed tool call comes back with `isError: true` and a
    with real alternative phrasings.
 2. Retry **once** with different wording. Never resend the identical string — the
    server caches it and you burn quota for the same answer.
-3. Ambiguous query — add context (`Mars planet` vs `Mars mythology`) or pass the
-   `assumption` value from the previous response.
+3. Ambiguous query — the answer lists `To use as … set assumption=…` lines. Re-ask
+   with `want pods` (or `want_pods`) and that value; `ask` cannot take an assumption,
+   and rewording will usually land on the same default meaning again. Adding context
+   (`Mars planet` vs `Mars mythology`) also works.
 4. Still failing? Answer from your own knowledge and say the Wolfram|Alpha lookup
    failed. `401/403` means the user has no valid AppID (they fix it with
    `want config --set-appid <id>`); `429` means the monthly quota is gone. Both are worth telling the user once, not retrying.

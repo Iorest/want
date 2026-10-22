@@ -50,6 +50,10 @@ pub struct PodsArgs {
     pod_titles: Option<Vec<String>>,
     /// Keep only the pod Wolfram|Alpha marks as primary. The cheapest way to bound the answer.
     primary: Option<bool>,
+    /// Interpretation to force, e.g. `*C.chicken-_*ExpandedFood-`, taken from a
+    /// previous answer's "To use as ... set assumption=" line. This is the only way
+    /// to disambiguate: the LLM API behind want_ask ignores this parameter.
+    assumption: Option<String>,
 }
 
 #[tool_router]
@@ -58,7 +62,8 @@ impl WantServer {
         name = "want_ask",
         description = "Ask Wolfram|Alpha a question and get back prose, tables and image URLs \
                        already formatted for an LLM. Best for multi-part answers: comparisons, \
-                       rankings, property tables, step results.",
+                       rankings, property tables, step results. Wolfram|Alpha picks a curated \
+                       subset of sections here; use want_pods when every section matters.",
         annotations(
             title = "Wolfram|Alpha answer",
             read_only_hint = true,
@@ -119,7 +124,8 @@ impl WantServer {
         name = "want_pods",
         description = "Fetch the structured Wolfram|Alpha result pods for a query as markdown \
                        sections. Use when you need specific named sections (Result, Basic \
-                       information, Properties, Timeline) or want to bound the output.",
+                       information, Properties, Timeline), want to bound the output, or need to \
+                       disambiguate an ambiguous query with `assumption`.",
         annotations(
             title = "Wolfram|Alpha result sections",
             read_only_hint = true,
@@ -131,14 +137,13 @@ impl WantServer {
         Parameters(args): Parameters<PodsArgs>,
     ) -> Result<CallToolResult, McpError> {
         let titles = args.pod_titles.unwrap_or_default();
+        let opts = Opts {
+            assumption: args.assumption,
+            ..self.opts.clone()
+        };
         match self
             .client
-            .pods(
-                &args.query,
-                &self.opts,
-                &titles,
-                args.primary.unwrap_or(false),
-            )
+            .pods(&args.query, &opts, &titles, args.primary.unwrap_or(false))
             .await
         {
             Ok(text) => Ok(CallToolResult::success(vec![ContentBlock::text(text)])),
@@ -161,7 +166,11 @@ Query tips:
 - Ask for one property at a time; make several calls instead of one compound question.
 - Use want_short for a single fact, want_ask for prose/tables, want_pods when you need several named sections.
 - A failed call returns isError with the suggestion to try; retry once with it, then fall back
-  to your own knowledge and say the lookup failed. Never invent the number."
+  to your own knowledge and say the lookup failed. Never invent the number.
+- Ambiguous input (e.g. 'chicken' = animal, food, or movie) comes back with lines like
+  `To use as a food set assumption=*C.chicken-_*ExpandedFood-`. Call want_pods with the
+  same query and that value in `assumption`. want_ask cannot take an assumption, so do
+  not reword the query hoping for the other meaning."
 )]
 impl ServerHandler for WantServer {}
 

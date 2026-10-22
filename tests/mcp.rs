@@ -373,6 +373,33 @@ fn invalid_units_is_a_tool_error() {
 
 #[test]
 #[ignore = "needs WOLFRAM_APPID and consumes API quota"]
+fn assumption_disambiguates_an_ambiguous_query() {
+    // "chicken" defaults to the animal; the food interpretation is a different card.
+    let mut lines = open("2025-06-18");
+    lines.push(call(
+        2,
+        "want_pods",
+        json!({
+            "query": "chicken",
+            "assumption": "*C.chicken-_*ExpandedFood-",
+            "primary": true
+        }),
+    ));
+
+    let responses = live(&lines, 2, &["mcp"]);
+    let text = response(&responses, 2)["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+
+    assert!(
+        text.to_lowercase().contains("nutrition") || text.to_lowercase().contains("calories"),
+        "assumption was ignored: {text}"
+    );
+}
+
+#[test]
+#[ignore = "needs WOLFRAM_APPID and consumes API quota"]
 fn server_options_reach_the_tools() {
     let mut lines = open("2025-06-18");
     lines.push(call(2, "want_short", json!({"query": "capital of France"})));

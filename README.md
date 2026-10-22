@@ -94,8 +94,9 @@ Global options:
 - `--no-source` — drop the provenance footer
 - `--cache-ttl <secs>` — reuse an identical response for N seconds (default: 0 for
   one-shot commands, 300 for the REPL and `want mcp`)
-- `--assumption <value>` (`ask` and `pods`) — force an interpretation, value taken
-  from `didyoumeans` in a previous response
+- `--assumption <value>` (`pods` only) — force an interpretation, value taken from
+  the `assumption=` lines in a previous answer. The LLM API behind `ask` ignores this
+  parameter, so `pods` is the way to ask about the other meaning of a word
 - `-v` / `-vv` — stderr log level, `RUST_LOG` takes precedence
 
 Exit codes, so a script can branch without parsing English:
@@ -265,8 +266,8 @@ knows how to use them without extra prompting.
 ## Testing
 
 ```sh
-cargo test                                  # 34 offline checks, no network
-WOLFRAM_APPID=... cargo test -- --ignored   # 18 live checks, ~30 API calls
+cargo test                                  # 36 offline checks, no network
+WOLFRAM_APPID=... cargo test -- --ignored   # 19 live checks, ~30 API calls
 ```
 
 The offline suite covers CLI surface, skill frontmatter rules, the skill install

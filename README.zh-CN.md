@@ -84,7 +84,8 @@ want skill --install                         # 或直接写进 agent 的目录
 - `--units metric|nonmetric` — 单位制，默认按调用方 IP
 - `--no-source` — 去掉出处行
 - `--cache-ttl <秒>` — 相同请求在 N 秒内复用（默认：一次性命令 0，REPL 与 `want mcp` 300）
-- `--assumption <value>`（`ask` / `pods`）— 强制某种解释，值取自上一次响应里的 `didyoumeans`
+- `--assumption <value>`（仅 `pods`）— 强制某种解释，值取自上一次回答里的 `assumption=` 行。
+  `ask` 背后的 LLM API 会忽略这个参数，所以想换个含义只能走 `pods`
 - `-v` / `-vv` — stderr 日志级别，`RUST_LOG` 优先
 
 退出码，脚本不用解析英文就能分支：
@@ -244,8 +245,8 @@ npx -y mcp-proxy --port 8080 -- want mcp
 ## 测试
 
 ```sh
-cargo test                                  # 34 项离线检查，不联网
-WOLFRAM_APPID=... cargo test -- --ignored   # 18 项联网检查，约 30 次调用
+cargo test                                  # 36 项离线检查，不联网
+WOLFRAM_APPID=... cargo test -- --ignored   # 19 项联网检查，约 30 次调用
 ```
 
 离线部分覆盖 CLI 表面、skill frontmatter 规范、skill 安装布局、缺 AppID 路径，以及 MCP 协议
