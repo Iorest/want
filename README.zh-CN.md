@@ -88,6 +88,19 @@ want skill --install                         # 或直接写进 agent 的目录
   `ask` 背后的 LLM API 会忽略这个参数，想换个含义只能用 `pods`
 - `-v` / `-vv` 控制 stderr 日志级别，`RUST_LOG` 优先
 
+单个子命令才有的选项：
+
+| 命令 | 选项 | 作用 |
+| --- | --- | --- |
+| `ask` | `--maxchars <n>` | 答案的字符上限，API 默认约 6800 |
+| `pods` | `--pod <TITLE>` | 按标题精确保留一节，可重复，`*` 是通配符 |
+| `pods` | `--primary` | 只留 primary 那一节。不能和 `--json` 一起用 |
+| `pods` | `--json` | 原始 Full Results JSON。不能和 `--primary` 一起用 |
+| `image` | `-o, --output <path>` | 图片写到哪；不写就自动编号 |
+| `repl` | `--mode ask\|short\|pods\|image` | 每行用哪个端点 |
+| `config` | `--set-appid <id>` | 把 AppID 存进配置文件 |
+| `skill` | `--install`、`--uninstall`、`--dir <root>` | 写入、移除，或换一个 skills 根目录 |
+
 退出码：
 
 | 码 | 含义 |

@@ -99,6 +99,19 @@ Global options:
   parameter, so `pods` is how you ask about another meaning of a word
 - `-v` / `-vv` set the stderr log level; `RUST_LOG` takes precedence
 
+Options that belong to one subcommand:
+
+| Command | Option | What it does |
+| --- | --- | --- |
+| `ask` | `--maxchars <n>` | character cap on the answer; the API default is about 6800 |
+| `pods` | `--pod <TITLE>` | keep one section by exact title, repeatable, `*` is a wildcard |
+| `pods` | `--primary` | keep only the primary section. Cannot be combined with `--json` |
+| `pods` | `--json` | raw Full Results JSON. Cannot be combined with `--primary` |
+| `image` | `-o, --output <path>` | where to write the picture; without it the name is numbered |
+| `repl` | `--mode ask\|short\|pods\|image` | which endpoint each line uses |
+| `config` | `--set-appid <id>` | store an AppID in the config file |
+| `skill` | `--install`, `--uninstall`, `--dir <root>` | write it, remove it, or act on another skills root |
+
 Exit codes:
 
 | Code | Meaning |

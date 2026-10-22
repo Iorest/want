@@ -87,14 +87,15 @@ enum Cmd {
         /// Keep only pods whose title matches exactly; repeatable, * is a wildcard
         #[arg(long = "pod", value_name = "TITLE")]
         pod: Vec<String>,
-        /// Keep only the pod Wolfram|Alpha marks as primary
+        /// Keep only the pod Wolfram|Alpha marks as primary. Not with --json
         #[arg(long, conflicts_with = "json")]
         primary: bool,
         /// Force an interpretation, using a value from a previous answer's assumptions
         /// list. Only the Full Results API honours this; `ask` cannot be disambiguated
         #[arg(long)]
         assumption: Option<String>,
-        /// Print the raw Full Results JSON instead of markdown, keeping every subpod type
+        /// Print the raw Full Results JSON instead of markdown, keeping every subpod
+        /// type. Not with --primary, which filters on the client side
         #[arg(long)]
         json: bool,
     },
