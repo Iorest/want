@@ -72,8 +72,8 @@ Work down this ladder. A failed tool call comes back with `isError: true` and a
 3. Ambiguous query — add context (`Mars planet` vs `Mars mythology`) or pass the
    `assumption` value from the previous response.
 4. Still failing? Answer from your own knowledge and say the Wolfram|Alpha lookup
-   failed. `401/403` means the user must set `WOLFRAM_APPID`; `429` means the monthly
-   quota is gone. Both are worth telling the user once, not retrying.
+   failed. `401/403` means the user has no valid AppID (they fix it with
+   `want config --set-appid <id>`); `429` means the monthly quota is gone. Both are worth telling the user once, not retrying.
    On the command line the exit code says the same thing without parsing: `3` =
    rephrase, `4` = key or quota, `1` = anything else, `0` = answered.
 5. Never invent a number, a date or a citation to cover a failed call.

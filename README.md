@@ -161,17 +161,22 @@ Two commands, using each host's own installer — `want` ships no config file to
 
 ```sh
 # Claude Code — user scope, every project on this machine
-claude mcp add -s user want -e WOLFRAM_APPID=XXXXXXXXXX -- want mcp
+claude mcp add -s user want -- want mcp
 
 # opencode — writes the project config; add --global for user level
-opencode mcp add want --env WOLFRAM_APPID=XXXXXXXXXX -- want mcp
+opencode mcp add want -- want mcp
 
 # Codex — writes ~/.codex/config.toml
-codex mcp add want --env WOLFRAM_APPID=XXXXXXXXXX -- want mcp
+codex mcp add want -- want mcp
 ```
 
 Each command is the host's documented way to add a stdio server, so the result is a
 real entry in that host's config, not a file you maintain by hand.
+
+The server reads the AppID from `~/.config/want/config.toml`, so no environment
+variable is needed here. If you would rather not store it on disk, add the flag
+form instead: `-e WOLFRAM_APPID=XXXXXXXXXX` for Claude Code, `--env
+WOLFRAM_APPID=XXXXXXXXXX` for opencode and Codex.
 
 ```sh
 claude mcp list        # want: want mcp - ✔ Connected
@@ -228,8 +233,12 @@ Both paths land in the directories the agents actually read:
 accepts a command plus args works:
 
 ```sh
-claude mcp add -s user want -e WOLFRAM_APPID=XXXXXXXXXX -- ssh myserver want mcp
+claude mcp add -s user want -- ssh myserver want mcp
 ```
+
+The `-e`/`--env` form does **not** reach the remote process over SSH, so run
+`want config --set-appid <id>` once on `myserver`, or pass the key inside the remote
+command: `-- ssh myserver want --appid XXXXXXXXXX mcp`.
 
 or bridge stdio to HTTP and use the host's HTTP transport:
 

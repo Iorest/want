@@ -6,9 +6,18 @@
 
 use std::process::{Command, Output};
 
+/// An empty HOME, so a developer's real ~/.config/want/config.toml cannot make
+/// an "AppID missing" test pass for the wrong reason.
+fn empty_home() -> std::path::PathBuf {
+    let home = std::env::temp_dir().join(format!("want-empty-home-{}", std::process::id()));
+    std::fs::create_dir_all(&home).ok();
+    home
+}
+
 fn run(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_want"))
         .args(args)
+        .env("HOME", empty_home())
         .env_remove("WOLFRAM_APPID")
         .output()
         .expect("failed to run want")
@@ -156,11 +165,7 @@ fn primary_and_json_cannot_be_combined() {
 #[test]
 fn a_bad_key_exits_4() {
     // 4 is the "fix the key or wait for quota" code.
-    let out = Command::new(env!("CARGO_BIN_EXE_want"))
-        .args(["--appid", "definitely-not-a-real-appid", "short", "2+2"])
-        .env_remove("WOLFRAM_APPID")
-        .output()
-        .expect("failed to run want");
+    let out = run(&["--appid", "definitely-not-a-real-appid", "short", "2+2"]);
 
     assert_eq!(out.status.code(), Some(4), "{}", stderr(&out));
 }
@@ -269,6 +274,7 @@ fn help_never_prints_the_env_value() {
     // `--help` output.
     let out = Command::new(env!("CARGO_BIN_EXE_want"))
         .arg("--help")
+        .env("HOME", empty_home())
         .env("WOLFRAM_APPID", "super-secret-appid")
         .output()
         .expect("failed to run want");
@@ -285,11 +291,7 @@ fn help_never_prints_the_env_value() {
 fn passing_the_appid_on_the_command_line_warns() {
     // `config` resolves the AppID without touching the network, so the warning
     // can be checked offline.
-    let out = Command::new(env!("CARGO_BIN_EXE_want"))
-        .args(["--appid", "x", "config"])
-        .env_remove("WOLFRAM_APPID")
-        .output()
-        .expect("failed to run want");
+    let out = run(&["--appid", "x", "config"]);
 
     assert!(stderr(&out).contains("process list"), "{}", stderr(&out));
 }

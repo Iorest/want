@@ -28,7 +28,8 @@ const SKILL_MD: &str = include_str!("../skills/want/SKILL.md");
                   want pods --primary \"integrate x^2 sin(x)\"\n  want image \"plot sin(x)/x\" -o plot.gif\n  \
                   want                       # REPL\n  \
                   \nAgent setup (see README for Codex and opencode):\n  \
-                  claude mcp add -s user want -e WOLFRAM_APPID=<id> -- want mcp\n  \
+                  want config --set-appid <id>\n  \
+                  claude mcp add -s user want -- want mcp\n  \
                   want skill --install       # or: npx skills add <owner>/want -g\n  \
                   \nUndo:\n  claude mcp remove want\n  want skill --uninstall\n  \
                   \nExit codes: 0 ok, 2 usage, 3 query not understood, 4 auth or quota, 1 other"

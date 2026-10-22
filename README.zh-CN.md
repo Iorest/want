@@ -145,17 +145,21 @@ pod 标题是精确字符串（`Physical properties`、`Indefinite integral` 之
 
 ```sh
 # Claude Code —— user 作用域，本机所有项目生效
-claude mcp add -s user want -e WOLFRAM_APPID=XXXXXXXXXX -- want mcp
+claude mcp add -s user want -- want mcp
 
 # opencode —— 默认写项目配置，加 --global 写用户级
-opencode mcp add want --env WOLFRAM_APPID=XXXXXXXXXX -- want mcp
+opencode mcp add want -- want mcp
 
 # Codex —— 写 ~/.codex/config.toml
-codex mcp add want --env WOLFRAM_APPID=XXXXXXXXXX -- want mcp
+codex mcp add want -- want mcp
 ```
 
 这三条都是各 host 文档里添加 stdio server 的正规入口，落到的是 host 自己的配置，不是由你
 手写维护的文件。
+
+server 会自己读 `~/.config/want/config.toml`，所以这里不用再传环境变量。不想把 key 落盘
+也可以改回带参数的形式：Claude Code 用 `-e WOLFRAM_APPID=XXXXXXXXXX`，opencode 和 Codex
+用 `--env WOLFRAM_APPID=XXXXXXXXXX`。
 
 ```sh
 claude mcp list        # want: want mcp - ✔ Connected
@@ -210,8 +214,12 @@ want skill               # 只打印
 `want mcp` 走 stdio。跨机器就用 SSH 拉起——任何支持「命令 + 参数」的 host 都行：
 
 ```sh
-claude mcp add -s user want -e WOLFRAM_APPID=XXXXXXXXXX -- ssh myserver want mcp
+claude mcp add -s user want -- ssh myserver want mcp
 ```
+
+`-e` / `--env` **不会**穿过 SSH 传到远端进程，所以在 `myserver` 上先执行一次
+`want config --set-appid <id>`，或者把 key 放进远端命令：
+`-- ssh myserver want --appid XXXXXXXXXX mcp`。
 
 或者加一层 stdio→HTTP 桥，host 用 HTTP 传输连：
 

@@ -217,8 +217,8 @@ impl Client {
             401 | 403 => fail(
                 Kind::Access,
                 format!(
-                    "Invalid or missing AppID (HTTP {status}): {}. Pass it with --appid or \
-                     WOLFRAM_APPID.",
+                    "Invalid or missing AppID (HTTP {status}): {}. Store it with \
+                     `want config --set-appid`, or pass --appid / WOLFRAM_APPID.",
                     body.trim()
                 ),
             ),
