@@ -31,11 +31,21 @@ API 对非商业用途免费，但必须有 AppID。
 2. 进 **My Apps**，点 **Sign up to get your first AppID**。
 3. 填一次性用途问卷。个人使用、研究、内部工具都算非商业。
 4. 弹窗里填应用名和一句描述，AppID 立刻生成，形如 `X7WEHY-W45KYJL3C`。
-5. 配到环境里：
+5. 存一次就行：
 
    ```sh
-   export WOLFRAM_APPID='X7WEHY-W45KYJL3C'   # 写进 ~/.zshrc 或 ~/.bashrc
+   want config --set-appid 'X7WEHY-W45KYJL3C'
    want short "population of France"
+   ```
+
+   它会写 `~/.config/want/config.toml`，权限 0600，开新终端不用再管 shell profile。
+   `want config` 会显示正在用哪个 key、来自哪里，key 本身打码。
+
+   临时用也可以：
+
+   ```sh
+   export WOLFRAM_APPID='X7WEHY-W45KYJL3C'   # 只对这个 shell 生效
+   want --appid 'X7WEHY-W45KYJL3C' short "population of France"   # 只对这次调用生效
    ```
 
 几个要点：
@@ -45,7 +55,8 @@ API 对非商业用途免费，但必须有 AppID。
 - 商业用途需要单独授权，官网只有询价表单。
 - `DEMO` 已经不被 API 接受（返回 HTTP 401），所以没有 AppID 时 `want` 会直接拒绝启动，
   而不是发一个注定失败的请求。
-- 读取顺序：`--appid` > `WOLFRAM_APPID`。
+- 读取顺序：`--appid` > `WOLFRAM_APPID` > `~/.config/want/config.toml`。
+  `want config` 会告诉你实际用的是哪个。
 
 ## 命令
 
@@ -61,12 +72,14 @@ want image "plot sin(x)/x from -10 to 10" -o plot.gif
 want --lang zh short "capital of France"     # 中文答案
 want                                         # REPL，:quit 退出
 want repl --mode pods                        # REPL 换端点
+want config                                  # 用的是哪个 AppID，来自哪里
 want skill                                   # 打印 skill
 want skill --install                         # 或直接写进 agent 的目录
 ```
 
 全局选项：
 
+- `--appid <id>` — 覆盖环境变量与配置文件
 - `--lang <code>` — 答案与 pod 标题的语言（`zh`、`de`、`fr`…），**输入**仍是英文
 - `--units metric|nonmetric` — 单位制，默认按调用方 IP
 - `--no-source` — 去掉出处行
@@ -223,7 +236,7 @@ npx -y mcp-proxy --port 8080 -- want mcp
 ## 测试
 
 ```sh
-cargo test                                  # 31 项离线检查，不联网
+cargo test                                  # 34 项离线检查，不联网
 WOLFRAM_APPID=... cargo test -- --ignored   # 18 项联网检查，约 30 次调用
 ```
 

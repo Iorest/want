@@ -171,10 +171,102 @@ fn a_bad_unit_system_is_rejected_before_any_request() {
     assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
 }
 
+/// Run with an isolated HOME so the config file under test is the only one.
+fn run_at(home: &std::path::Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_want"));
+    cmd.args(args).env("HOME", home).env_remove("WOLFRAM_APPID");
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    cmd.output().expect("failed to run want")
+}
+
+#[test]
+fn config_file_is_written_private_and_read_back() {
+    let home = std::env::temp_dir().join(format!("want-config-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home).expect("temp home");
+
+    let write = run_at(&home, &["config", "--set-appid", "TESTKEY123456"], &[]);
+    assert!(write.status.success(), "{}", stderr(&write));
+
+    let path = home.join(".config/want/config.toml");
+    assert!(path.exists(), "config file was not created");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "config holds a secret, mode was {mode:o}");
+    }
+
+    let show = run_at(&home, &["config"], &[]);
+    let text = stdout(&show);
+    assert!(text.contains("from config file"), "{text}");
+    assert!(
+        !text.contains("TESTKEY123456"),
+        "the key was printed: {text}"
+    );
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn appid_precedence_is_flag_then_env_then_file() {
+    let home = std::env::temp_dir().join(format!("want-precedence-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home).expect("temp home");
+
+    let write = run_at(&home, &["config", "--set-appid", "FILEKEY"], &[]);
+    assert!(write.status.success(), "{}", stderr(&write));
+
+    let from_file = run_at(&home, &["config"], &[]);
+    assert!(
+        stdout(&from_file).contains("from config file"),
+        "{}",
+        stdout(&from_file)
+    );
+
+    let from_env = run_at(&home, &["config"], &[("WOLFRAM_APPID", "ENVKEY")]);
+    assert!(
+        stdout(&from_env).contains("from WOLFRAM_APPID"),
+        "{}",
+        stdout(&from_env)
+    );
+
+    let from_flag = run_at(
+        &home,
+        &["--appid", "FLAGKEY", "config"],
+        &[("WOLFRAM_APPID", "ENVKEY")],
+    );
+    assert!(
+        stdout(&from_flag).contains("from --appid"),
+        "{}",
+        stdout(&from_flag)
+    );
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn a_broken_config_file_is_reported_not_ignored() {
+    let home = std::env::temp_dir().join(format!("want-badconfig-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(home.join(".config/want")).expect("temp home");
+    std::fs::write(home.join(".config/want/config.toml"), "appid = [oops").unwrap();
+
+    let out = run_at(&home, &["short", "2+2"], &[]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("config.toml"), "{}", stderr(&out));
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
 #[test]
 fn help_never_prints_the_env_value() {
-    // clap renders `[env: NAME=value]` by default, which would leak the key into
-    // any pasted `--help` output.
+    // The AppID is resolved by hand instead of through clap's `env`, because
+    // clap renders `[env: NAME=value]` and would leak the key into any pasted
+    // `--help` output.
     let out = Command::new(env!("CARGO_BIN_EXE_want"))
         .arg("--help")
         .env("WOLFRAM_APPID", "super-secret-appid")
@@ -182,37 +274,36 @@ fn help_never_prints_the_env_value() {
         .expect("failed to run want");
 
     let help = stdout(&out);
-    assert!(help.contains("[env: WOLFRAM_APPID]"), "{help}");
     assert!(
         !help.contains("super-secret-appid"),
         "the AppID leaked: {help}"
     );
+    assert!(help.contains("WOLFRAM_APPID"), "{help}");
 }
 
 #[test]
 fn passing_the_appid_on_the_command_line_warns() {
+    // `config` resolves the AppID without touching the network, so the warning
+    // can be checked offline.
     let out = Command::new(env!("CARGO_BIN_EXE_want"))
-        .args(["--appid", "x", "skill"])
+        .args(["--appid", "x", "config"])
         .env_remove("WOLFRAM_APPID")
         .output()
         .expect("failed to run want");
 
-    assert!(
-        stderr(&out).contains("WOLFRAM_APPID environment variable"),
-        "{}",
-        stderr(&out)
-    );
+    assert!(stderr(&out).contains("process list"), "{}", stderr(&out));
 }
 
 #[test]
-fn missing_appid_points_at_the_signup_page() {
+fn missing_appid_points_at_every_way_to_set_one() {
     let out = run(&["short", "2+2"]);
     assert!(!out.status.success(), "want should fail without an AppID");
-    assert!(
-        stderr(&out).contains("developer.wolframalpha.com"),
-        "{}",
-        stderr(&out)
-    );
+
+    let err = stderr(&out);
+    assert!(err.contains("developer.wolframalpha.com"), "{err}");
+    assert!(err.contains("want config --set-appid"), "{err}");
+    assert!(err.contains("WOLFRAM_APPID"), "{err}");
+    assert!(err.contains("--appid"), "{err}");
 }
 
 //==========================================================

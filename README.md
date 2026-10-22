@@ -37,11 +37,22 @@ The API is free for non-commercial use, but it always needs an AppID.
    tooling counts as non-commercial.
 4. In the dialog that appears, give the application a name and a one-line
    description. The AppID appears immediately, shaped like `X7WEHY-W45KYJL3C`.
-5. Export it:
+5. Store it, once:
 
    ```sh
-   export WOLFRAM_APPID='X7WEHY-W45KYJL3C'   # add to ~/.zshrc or ~/.bashrc
+   want config --set-appid 'X7WEHY-W45KYJL3C'
    want short "population of France"
+   ```
+
+   That writes `~/.config/want/config.toml` with mode 0600, so a new terminal
+   works without touching a shell profile. `want config` shows which key is in
+   use and where it came from, with the key masked.
+
+   A one-off shell or command still works too:
+
+   ```sh
+   export WOLFRAM_APPID='X7WEHY-W45KYJL3C'   # this shell only
+   want --appid 'X7WEHY-W45KYJL3C' short "population of France"   # this call only
    ```
 
 Details worth knowing:
@@ -52,7 +63,8 @@ Details worth knowing:
   contact form.
 - `DEMO` is no longer accepted (it returns HTTP 401), so `want` refuses to start
   without a real AppID instead of sending a request that cannot succeed.
-- Resolution order: `--appid` > `WOLFRAM_APPID`.
+- Resolution order: `--appid` > `WOLFRAM_APPID` > `~/.config/want/config.toml`.
+  `want config` prints which one won.
 
 ## Commands
 
@@ -68,12 +80,14 @@ want image "plot sin(x)/x from -10 to 10" -o plot.gif
 want --lang zh short "capital of France"     # answer in Chinese
 want                                         # REPL, :quit to leave
 want repl --mode pods                        # REPL on another endpoint
+want config                                  # which AppID, and where it came from
 want skill                                   # print the skill
 want skill --install                         # or write it where agents look
 ```
 
 Global options:
 
+- `--appid <id>` — overrides both the environment and the config file
 - `--lang <code>` — answer language and pod titles (`zh`, `de`, `fr`, …); input
   stays English
 - `--units metric|nonmetric` — unit system, defaults by caller IP
@@ -242,7 +256,7 @@ knows how to use them without extra prompting.
 ## Testing
 
 ```sh
-cargo test                                  # 31 offline checks, no network
+cargo test                                  # 34 offline checks, no network
 WOLFRAM_APPID=... cargo test -- --ignored   # 18 live checks, ~30 API calls
 ```
 

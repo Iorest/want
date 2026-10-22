@@ -4,6 +4,7 @@
 //! server for agents, and `want skill` which prints the SKILL.md agents load.
 
 mod client;
+mod config;
 mod mcp;
 
 use std::path::PathBuf;
@@ -33,8 +34,8 @@ const SKILL_MD: &str = include_str!("../skills/want/SKILL.md");
                   \nExit codes: 0 ok, 2 usage, 3 query not understood, 4 auth or quota, 1 other"
 )]
 struct Cli {
-    /// Wolfram|Alpha AppID; also read from WOLFRAM_APPID
-    #[arg(long, global = true, env = "WOLFRAM_APPID", hide_env_values = true)]
+    /// Wolfram|Alpha AppID. Falls back to WOLFRAM_APPID, then ~/.config/want/config.toml
+    #[arg(long, global = true, hide_env_values = true)]
     appid: Option<String>,
 
     /// Log verbosity on stderr: -v info, -vv debug. RUST_LOG takes precedence
@@ -114,6 +115,12 @@ enum Cmd {
     },
     /// Serve MCP over stdio
     Mcp,
+    /// Show which AppID will be used and where it came from, or store one
+    Config {
+        /// Write this AppID to the config file (created 0600)
+        #[arg(long, value_name = "APPID")]
+        set_appid: Option<String>,
+    },
     /// Print SKILL.md, install it into the agent skill directories, or remove it again
     Skill {
         /// Write SKILL.md into the skills directories instead of printing it
@@ -196,12 +203,6 @@ async fn run() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    if std::env::args().any(|arg| arg == "--appid" || arg.starts_with("--appid=")) {
-        tracing::warn!(
-            "--appid is visible in the process list; prefer the WOLFRAM_APPID environment variable"
-        );
-    }
-
     // `want skill` is pure stdout plus optional file writes, no network, so it
     // must not demand an AppID.
     if let Some(Cmd::Skill {
@@ -213,13 +214,30 @@ async fn run() -> Result<()> {
         return skill(*install, *uninstall, dir);
     }
 
-    // DEMO is no longer accepted by the API, so a missing AppID is a hard error
-    // pointing at the free signup instead of a confusing 401.
-    let appid = cli.appid.context(
-        "No Wolfram|Alpha AppID. Get a free one at https://developer.wolframalpha.com, \
-         then export WOLFRAM_APPID=xxxx or pass --appid xxxx",
-    )?;
+    let resolved = config::resolve(cli.appid.clone())?;
 
+    if let Some(Cmd::Config { set_appid }) = &cli.cmd {
+        return show_config(set_appid.as_deref(), resolved.as_ref());
+    }
+
+    // DEMO is no longer accepted by the API, so a missing AppID is a hard error
+    // pointing at every way to supply one, instead of a confusing 401.
+    let resolved = resolved.with_context(|| {
+        let path = config::path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "~/.config/want/config.toml".to_owned());
+        format!(
+            "No Wolfram|Alpha AppID. Get a free one at https://developer.wolframalpha.com, \
+             then pick one:\n  \
+             want config --set-appid <id>      # writes {path}\n  \
+             export WOLFRAM_APPID=<id>         # this shell only\n  \
+             want --appid <id> <command>       # this command only"
+        )
+    })?;
+
+    warn_about_origin(&resolved);
+
+    let appid = resolved.appid;
     let client = Arc::new(Client::new(&appid)?);
     let opts = Opts {
         units: cli.units.clone(),
@@ -268,7 +286,67 @@ async fn run() -> Result<()> {
             )
         }
         Some(Cmd::Mcp) => mcp::serve(client, &live_opts()).await?,
+        Some(Cmd::Config { .. }) => unreachable!("handled before the AppID check"),
         Some(Cmd::Skill { .. }) => unreachable!("handled before the AppID check"),
+    }
+
+    Ok(())
+}
+
+/// Point out the two ways an AppID can be exposed: the process list, or a config
+/// file other users can read.
+fn warn_about_origin(resolved: &config::Resolved) {
+    match resolved.origin {
+        config::Origin::Flag => tracing::warn!(
+            "--appid is visible in the process list; prefer `want config --set-appid` or WOLFRAM_APPID"
+        ),
+        config::Origin::File => {
+            if let Ok(path) = config::path() {
+                config::warn_if_world_readable(&path);
+            }
+        }
+        config::Origin::Env => {}
+    }
+}
+
+/// `want config` — say where the AppID comes from, or store one.
+fn show_config(set_appid: Option<&str>, resolved: Option<&config::Resolved>) -> Result<()> {
+    if let Some(appid) = set_appid {
+        let path = config::write(appid.trim())?;
+        println!("wrote {}", path.display());
+        return Ok(());
+    }
+
+    let path = config::path()?;
+    if let Some(resolved) = resolved {
+        warn_about_origin(resolved);
+    }
+
+    match resolved {
+        Some(resolved) => println!(
+            "AppID: {}  from {}",
+            config::mask(&resolved.appid),
+            resolved.origin.describe()
+        ),
+        None => println!("AppID: none found"),
+    }
+
+    println!(
+        "file:  {} ({})",
+        path.display(),
+        if path.exists() { "exists" } else { "missing" }
+    );
+    println!(
+        "env:   WOLFRAM_APPID {}",
+        if std::env::var("WOLFRAM_APPID").is_ok_and(|v| !v.trim().is_empty()) {
+            "set"
+        } else {
+            "not set"
+        }
+    );
+
+    if resolved.is_none() {
+        println!("\nStore one with: want config --set-appid <id>");
     }
 
     Ok(())
