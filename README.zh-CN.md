@@ -248,3 +248,7 @@ cargo fmt --check
 - `--lang` 只本地化输出，查询本身必须英文。
 - `pods` 只取 `plaintext`，不解析 MathML / imagemap。
 - 商业套餐下 LLM API 与 Full Results API 的额度是分开的。
+
+## 许可
+
+MIT，见 [LICENSE](./LICENSE)。

@@ -269,3 +269,7 @@ Dependencies: `rmcp` (official MCP Rust SDK), `reqwest`, `clap`, `tokio`,
 - `--lang` localises output only; the query itself must be English.
 - `pods` keeps `plaintext` only; MathML and imagemap are not parsed.
 - LLM API and Full Results API quotas are separate pools on commercial plans.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
