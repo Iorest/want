@@ -178,21 +178,23 @@ impl Client {
         let mut url = reqwest::Url::parse(base).context("invalid URL")?;
         {
             let mut pairs = url.query_pairs_mut();
-            pairs.append_pair("appid", &self.appid);
             for (k, v) in params {
                 pairs.append_pair(k, v);
             }
         }
 
         let started = Instant::now();
+        // The AppID travels in a header, never in the URL: query strings end up in
+        // proxy logs and shell history, and all four endpoints accept Bearer.
         let resp = self
             .http
             .get(url)
+            .bearer_auth(&self.appid)
             .send()
             .await
             .with_context(|| format!("request to {base} failed"))?;
         let status = resp.status().as_u16();
-        // Never log the URL: it carries the AppID.
+        // Never log the URL: it carries the user's query, which may be private.
         tracing::debug!(
             base,
             status,
@@ -486,6 +488,19 @@ fn annotate(
     text
 }
 
+/// `timedout` is a count, sometimes serialised as a string.
+fn timed_out(qr: &Value) -> Option<u64> {
+    match qr.get("timedout")? {
+        Value::Number(n) => n.as_u64(),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    }
+}
+
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn render_pods(input: &str, body: &Value, primary_only: bool, filtered: bool) -> Result<String> {
     let qr = body
         .get("queryresult")
@@ -552,9 +567,12 @@ fn render_pods(input: &str, body: &Value, primary_only: bool, filtered: bool) ->
             .into_iter()
             .flatten()
         {
+            let mut printed = String::new();
+
             if let Some(text) = subpod.get("plaintext").and_then(Value::as_str) {
                 let text = text.trim();
                 if !text.is_empty() {
+                    printed = one_line(text);
                     lines.push(text.to_owned());
                 }
             }
@@ -570,12 +588,19 @@ fn render_pods(input: &str, body: &Value, primary_only: bool, filtered: bool) ->
                     .get("img")
                     .and_then(|img| img.get("alt"))
                     .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .trim();
-                lines.push(if alt.is_empty() {
-                    format!("image: {src}")
-                } else {
+                    .map(one_line)
+                    .unwrap_or_default();
+
+                // A table's alt text is the whole table again, and a long alt is
+                // never worth reading: only keep a short, different description.
+                let useful = !alt.is_empty()
+                    && alt.chars().count() <= 120
+                    && (printed.is_empty() || !alt.contains(&printed));
+
+                lines.push(if useful {
                     format!("image: {src} ({alt})")
+                } else {
+                    format!("image: {src}")
                 });
             }
         }
@@ -603,6 +628,15 @@ fn render_pods(input: &str, body: &Value, primary_only: bool, filtered: bool) ->
             Kind::Uninterpretable,
             format!("Query returned no readable content: {input}"),
         );
+    }
+
+    // W|A drops pods that miss the per-pod deadline and only says so in
+    // `timedout`; without this line the answer looks complete when it is not.
+    if let Some(missing) = timed_out(qr).filter(|n| *n > 0) {
+        out.push_str(&format!(
+            "\n\n({missing} section(s) did not finish in time and are missing; \
+             running the same query again usually returns them)"
+        ));
     }
 
     Ok(out.trim_end().to_owned())
@@ -639,6 +673,22 @@ mod tests {
         assert_eq!(
             render_pods("plot", &body, false, false).unwrap(),
             "## Plot\nimage: https://example.test/plot.gif (plot of sin(x))"
+        );
+    }
+
+    #[test]
+    fn a_table_image_does_not_repeat_the_table_in_its_alt_text() {
+        // W|A sets alt to the full table, which we already printed as plaintext.
+        let body = json!({"queryresult": {"success": true, "pods": [
+            {"title": "Biological properties", "subpods": [{
+                "plaintext": "lifespan | 10 years\nlength | 30 cm",
+                "img": {"src": "https://example.test/t.gif", "alt": "lifespan | 10 years length | 30 cm"}
+            }]},
+        ]}});
+
+        assert_eq!(
+            render_pods("chicken", &body, false, false).unwrap(),
+            "## Biological properties\nlifespan | 10 years\nlength | 30 cm\nimage: https://example.test/t.gif"
         );
     }
 
@@ -690,6 +740,18 @@ mod tests {
             render_pods("2+2", &body, true, false).unwrap(),
             "## Result\n4"
         );
+    }
+
+    #[test]
+    fn a_partial_answer_says_how_many_sections_are_missing() {
+        let body = json!({"queryresult": {
+            "success": true,
+            "timedout": "2",
+            "pods": [{"title": "Result", "subpods": [{"plaintext": "4"}]}],
+        }});
+
+        let text = render_pods("chicken", &body, false, false).unwrap();
+        assert!(text.contains("2 section(s) did not finish"), "{text}");
     }
 
     #[test]
