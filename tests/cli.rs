@@ -4,7 +4,8 @@
 //! Wolfram|Alpha API and consume quota; run them with
 //! `WOLFRAM_APPID=... cargo test -- --ignored`.
 
-use std::process::{Command, Output};
+use std::io::Write;
+use std::process::{Command, Output, Stdio};
 
 /// An empty HOME, so a developer's real ~/.config/want/config.toml cannot make
 /// an "AppID missing" test pass for the wrong reason.
@@ -425,7 +426,8 @@ fn passing_the_appid_on_the_command_line_warns() {
 #[test]
 fn missing_appid_points_at_every_way_to_set_one() {
     let out = run(&["short", "2+2"]);
-    assert!(!out.status.success(), "want should fail without an AppID");
+    // Same code as a rejected key: the fix is the same, and a script can branch.
+    assert_eq!(out.status.code(), Some(4), "{}", stderr(&out));
 
     let err = stderr(&out);
     assert!(err.contains("developer.wolframalpha.com"), "{err}");
@@ -716,4 +718,41 @@ fn a_pool_that_is_entirely_dead_still_exits_4() {
 
     assert_eq!(out.status.code(), Some(4), "{}", stderr(&out));
     assert!(stderr(&out).contains("all 2 AppIDs"), "{}", stderr(&out));
+}
+
+#[test]
+#[ignore = "needs two keys in WOLFRAM_APPID and consumes API quota"]
+fn a_pool_rotates_between_real_keys() {
+    let pool = std::env::var("WOLFRAM_APPID").unwrap_or_default();
+    if !pool.contains(',') {
+        eprintln!("skipped: export WOLFRAM_APPID as KEY_ONE,KEY_TWO to run this");
+        return;
+    }
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_want"))
+        // stderr is piped here, so the log must arrive without ANSI escapes;
+        // colour would split `key=1 status=200` into pieces.
+        .args(["repl", "-vv"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn want repl");
+
+    {
+        let stdin = child.stdin.as_mut().expect("stdin");
+        // Two different queries: the cache cannot answer the second, so each
+        // line is a real request and the slot numbers show which key served it.
+        writeln!(stdin, "2+2").unwrap();
+        writeln!(stdin, "3+3").unwrap();
+    }
+    drop(child.stdin.take());
+
+    let out = child.wait_with_output().expect("repl did not exit");
+    let log = String::from_utf8_lossy(&out.stderr).into_owned();
+
+    assert!(out.status.success(), "{log}");
+    for slot in ["key=1 status=200", "key=2 status=200"] {
+        assert!(log.contains(slot), "the pool did not use both keys:\n{log}");
+    }
 }

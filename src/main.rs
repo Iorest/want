@@ -8,6 +8,7 @@ mod client;
 mod config;
 mod mcp;
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -218,6 +219,9 @@ async fn run() -> Result<()> {
                 .from_env_lossy(),
         )
         .with_writer(std::io::stderr)
+        // Colour codes in a redirected stderr would end up in log files and in
+        // anything parsing them (test harnesses included).
+        .with_ansi(std::io::stderr().is_terminal())
         .init();
 
     // `want skill` is pure stdout plus optional file writes, no network, so it
@@ -242,19 +246,11 @@ async fn run() -> Result<()> {
     }
 
     // DEMO is no longer accepted by the API, so a missing AppID is a hard error
-    // pointing at every way to supply one, instead of a confusing 401.
-    let resolved = resolved.with_context(|| {
-        let path = config::path()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| "~/.config/want/config.toml".to_owned());
-        format!(
-            "No Wolfram|Alpha AppID. Get a free one at https://developer.wolframalpha.com, \
-             then pick one:\n  \
-             want config --set-appid <id>      # writes {path}; repeat for more keys\n  \
-             export WOLFRAM_APPID=<id>         # this shell only, comma-separated for a pool\n  \
-             want --appid <id> <command>       # this command only"
-        )
-    })?;
+    // pointing at every way to supply one, instead of a confusing 401. It exits
+    // with the same code as a rejected key: both mean "fix the credentials".
+    let Some(resolved) = resolved else {
+        return Err(client::Failure::access(missing_appid_hint()).into());
+    };
 
     warn_about_origin(&resolved);
 
@@ -306,6 +302,20 @@ async fn run() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// What to print when no AppID was found in any of the three places.
+fn missing_appid_hint() -> String {
+    let path = config::path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "~/.config/want/config.toml".to_owned());
+    format!(
+        "No Wolfram|Alpha AppID. Get a free one at https://developer.wolframalpha.com, \
+         then pick one:\n  \
+         want config --set-appid <id>      # writes {path}; repeat for more keys\n  \
+         export WOLFRAM_APPID=<id>         # this shell only, comma-separated for a pool\n  \
+         want --appid <id> <command>       # this command only, repeat for more keys"
+    )
 }
 
 /// Point out the two ways an AppID can be exposed: the process list, or a config

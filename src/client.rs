@@ -37,6 +37,11 @@ impl Failure {
         }
     }
 
+    /// A failure the user fixes by supplying a usable AppID.
+    pub fn access(message: impl Into<String>) -> Self {
+        Self::new(Kind::Access, message)
+    }
+
     pub fn kind(&self) -> Kind {
         self.kind
     }
@@ -256,7 +261,7 @@ impl Client {
         for _ in 0..count {
             let index = self.pool.next();
 
-            match self.send_with(base, params, self.pool.key(index)).await {
+            match self.send_with(base, params, index).await {
                 Ok(resp) => return Ok(resp),
                 Err(err) if is_access(&err) => {
                     self.pool.mark_dead(index);
@@ -288,11 +293,13 @@ impl Client {
         )
     }
 
+    /// One attempt, on the key at `slot`. The slot number is logged so a pool's
+    /// rotation can be watched with `-vv`, without ever printing the key.
     async fn send_with(
         &self,
         base: &str,
         params: &[(&str, &str)],
-        appid: &str,
+        slot: usize,
     ) -> Result<reqwest::Response> {
         let mut url = reqwest::Url::parse(base).context("invalid URL")?;
         {
@@ -308,7 +315,7 @@ impl Client {
         let resp = self
             .http
             .get(url)
-            .bearer_auth(appid)
+            .bearer_auth(self.pool.key(slot))
             .send()
             .await
             .with_context(|| format!("request to {base} failed"))?;
@@ -316,6 +323,7 @@ impl Client {
         // Never log the URL: it carries the user's query, which may be private.
         tracing::debug!(
             base,
+            key = slot + 1,
             status,
             ms = started.elapsed().as_millis(),
             "wolfram|alpha"
@@ -567,7 +575,9 @@ impl Client {
 
     /// Simple API: one rendered image. Returns the bytes plus a file extension.
     pub async fn image(&self, input: &str, opts: &Opts) -> Result<(Vec<u8>, &'static str)> {
-        let mut params = vec![("i", input)];
+        // Rendering a plot can take longer than the API's default 5s budget, and
+        // the resulting 501 says "did not understand your input", which is wrong.
+        let mut params = vec![("i", input), ("timeout", "20")];
         params.extend(opts.pairs(false));
 
         let (bytes, _) = self.get(SIMPLE_URL, &params, opts).await?;

@@ -48,7 +48,7 @@ API 非商业用途免费，但必须有 AppID。
    ```
 
    它写进 `~/.config/want/config.toml`，权限 0600，以后开新终端不用再管 shell profile。
-   `want config` 能看当前用的是哪个 key、从哪来的，key 本身打码。
+   `want config` 能看当前在用哪些 key、从哪来的，key 本身打码。
 
    只在当前 shell 或单条命令里用也行：
 
@@ -142,7 +142,7 @@ want skill --install                         # 或直接写进 agent 的目录
 | 1 | 其它（网络、解析、意外状态码） |
 | 2 | 用法错误（参数拼错、`--units` 非法） |
 | 3 | 查询没被理解，换个说法 |
-| 4 | 鉴权或配额，换 AppID 或等额度重置 |
+| 4 | 鉴权或配额：没有 AppID、AppID 被拒，或本月额度用完 |
 
 脚本按码分支即可，不用解析文字。
 
@@ -294,7 +294,7 @@ npx -y mcp-proxy --port 8080 -- want mcp
 
 ```sh
 cargo test                                  # 44 项离线检查，不联网
-WOLFRAM_APPID=... cargo test -- --ignored   # 21 项联网检查，约 35 次调用
+WOLFRAM_APPID=... cargo test -- --ignored   # 22 项联网检查，约 35 次调用
 ```
 
 离线部分覆盖 CLI 表面、skill frontmatter 规范、skill 安装布局、缺 AppID 的路径、AppID

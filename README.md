@@ -55,8 +55,8 @@ The API is free for non-commercial use but always needs an AppID.
    ```
 
    That writes `~/.config/want/config.toml` with mode 0600, so a new terminal works
-   without touching a shell profile. `want config` shows which key is in use, where
-   it came from, and masks the key itself.
+   without touching a shell profile. `want config` shows which keys are in use,
+   where they came from, and masks them.
 
    A one-off shell or command still works:
 
@@ -158,7 +158,7 @@ Exit codes:
 | 1 | anything else (network, parse, unexpected status) |
 | 2 | usage error (bad flag, bad `--units`) |
 | 3 | query not understood, rephrase it |
-| 4 | auth or quota, fix the AppID or wait for the month to roll over |
+| 4 | auth or quota: no AppID, a rejected one, or the month is spent |
 
 A script can branch on these without parsing the message.
 
@@ -321,7 +321,7 @@ knows how to use them without extra prompting.
 
 ```sh
 cargo test                                  # 44 offline checks, no network
-WOLFRAM_APPID=... cargo test -- --ignored   # 21 live checks, ~35 API calls
+WOLFRAM_APPID=... cargo test -- --ignored   # 22 live checks, ~35 API calls
 ```
 
 The offline suite covers the CLI surface, skill frontmatter rules, the skill install

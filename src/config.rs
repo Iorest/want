@@ -60,7 +60,7 @@ impl File {
             Some(OneOrMany::Many(many)) => many.iter().map(String::as_str).collect(),
             None => Vec::new(),
         };
-        collect(&raw)
+        collect(raw)
     }
 }
 
@@ -72,7 +72,7 @@ pub fn path() -> Result<PathBuf> {
 
 /// First source that yields at least one AppID.
 pub fn resolve(flag: Vec<String>) -> Result<Option<Resolved>> {
-    let from_flag = collect(&flag.iter().map(String::as_str).collect::<Vec<_>>());
+    let from_flag = collect(flag.iter().map(String::as_str));
     if !from_flag.is_empty() {
         return Ok(Some(Resolved {
             appids: from_flag,
@@ -119,7 +119,7 @@ pub fn read() -> Result<Vec<String>> {
 /// Write the AppIDs to the config file. The file holds a secret, so it is
 /// created readable by the owner only.
 pub fn write(appids: &[String]) -> Result<PathBuf> {
-    let appids = collect(&appids.iter().map(String::as_str).collect::<Vec<_>>());
+    let appids = collect(appids.iter().map(String::as_str));
     if appids.is_empty() {
         anyhow::bail!("no AppID to store");
     }
@@ -190,7 +190,7 @@ pub fn split(raw: &str) -> Vec<String> {
     ids
 }
 
-fn collect(values: &[&str]) -> Vec<String> {
+fn collect<'a>(values: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let mut ids: Vec<String> = Vec::new();
     for value in values {
         for id in split(value) {
