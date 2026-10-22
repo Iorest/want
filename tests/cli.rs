@@ -252,6 +252,10 @@ fn config_file_is_written_private_and_read_back() {
 
     let path = home.join(".config/want/config.toml");
     assert!(path.exists(), "config file was not created");
+    assert!(
+        !home.join(".config/want/config.toml.tmp").exists(),
+        "the temporary file from the atomic write was left behind"
+    );
 
     #[cfg(unix)]
     {
@@ -510,9 +514,22 @@ fn pods_primary_returns_exactly_one_section() {
 #[ignore = "needs WOLFRAM_APPID and consumes API quota"]
 fn pods_unknown_title_explains_the_filter() {
     let out = live(&["pods", "--pod", "No Such Section", "Mars"]);
-    assert!(!out.status.success());
+    // 2, not 3: the query is fine, the filter value is not.
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
     // Neutral wording, because the tool argument is `pod_titles`, not `--pod`.
     assert!(stderr(&out).contains("title filter"), "{}", stderr(&out));
+}
+
+#[test]
+#[ignore = "needs WOLFRAM_APPID and consumes API quota"]
+fn a_list_query_on_short_points_at_ask_instead_of_rewording() {
+    let out = live(&["short", "planets"]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("use ask or pods"),
+        "the message must name the endpoint that can answer: {}",
+        stderr(&out)
+    );
 }
 
 #[test]

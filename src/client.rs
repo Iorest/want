@@ -17,6 +17,9 @@ const PODS_URL: &str = "https://api.wolframalpha.com/v2/query";
 pub enum Kind {
     /// The API could not interpret the query (HTTP 501 or `success: false`).
     Uninterpretable,
+    /// The query is fine but the argument is not: a pod filter that matched
+    /// nothing, or a primary section that does not exist.
+    Usage,
     /// Bad or missing AppID, or the monthly quota is gone.
     Access,
     /// Anything else: network, parsing, unexpected status.
@@ -85,6 +88,15 @@ fn is_access(err: &anyhow::Error) -> bool {
 /// Telling an agent to "rephrase" a query that was merely slow or too short is
 /// wasted effort, so only the parse failure keeps that code.
 fn classify_501(body: &str) -> (Kind, &'static str) {
+    // The query is fine; this endpoint only answers single values. Sending the
+    // agent to reword it makes it give up and answer from memory.
+    if body.contains("No short answer available") {
+        return (
+            Kind::Other,
+            " (the Short Answers API returns one value; use ask or pods for a list \
+             or a sentence)",
+        );
+    }
     if body.contains("timeout") {
         return (
             Kind::Other,
@@ -700,13 +712,13 @@ fn render_pods(input: &str, body: &Value, primary_only: bool, filtered: bool) ->
     if pods.is_empty() {
         if primary_only && !filtered {
             return fail(
-                Kind::Uninterpretable,
+                Kind::Usage,
                 format!("No section is marked primary for: {input}"),
             );
         }
         if filtered {
             return fail(
-                Kind::Uninterpretable,
+                Kind::Usage,
                 "No section matched the requested pod titles. Titles must match exactly \
                  (a trailing * is a wildcard); drop the title filter to see every section.",
             );
@@ -917,6 +929,15 @@ mod tests {
     }
 
     #[test]
+    fn a_short_answer_rejection_points_at_the_other_endpoints() {
+        // The query is fine; the Short API only answers single values, so telling
+        // the agent to reword it makes it give up instead of switching tools.
+        let (kind, hint) = super::classify_501("\"No short answer available\"");
+        assert_eq!(kind, super::Kind::Other);
+        assert!(hint.contains("ask"), "{hint}");
+    }
+
+    #[test]
     fn uninterpreted_queries_are_typed() {
         let body = json!({"queryresult": {"success": false}});
         let err = render_pods("zzz", &body, false, false).unwrap_err();
@@ -954,10 +975,12 @@ mod tests {
         // The API answers 200 with numpods: 0 and no `pods` key.
         let body = json!({"queryresult": {"success": true, "numpods": 0}});
 
-        let err = render_pods("Mars", &body, false, true)
-            .unwrap_err()
-            .to_string();
+        let err = render_pods("Mars", &body, false, true).unwrap_err();
         // Neutral wording: `--pod` is the CLI spelling, `pod_titles` the tool one.
-        assert!(err.contains("title filter"), "{err}");
+        assert!(err.to_string().contains("title filter"), "{err}");
+        // The query was fine; the filter was not, so this is a usage error (exit 2)
+        // and not "rephrase the query" (exit 3).
+        let failure = err.downcast_ref::<super::Failure>().expect("typed error");
+        assert_eq!(failure.kind(), super::Kind::Usage);
     }
 }

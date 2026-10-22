@@ -61,7 +61,7 @@ pub struct AskArgs {
 pub struct ShortArgs {
     /// Short factual query in English, e.g. "speed of light".
     query: String,
-    /// Unit system. Omit to use the server's --units setting.
+    /// Unit system. Omit to use the server default.
     units: Option<Units>,
 }
 
@@ -78,7 +78,9 @@ pub struct PodsArgs {
     primary: Option<bool>,
     /// Interpretation to force, e.g. `*C.chicken-_*ExpandedFood-`, taken from a
     /// previous answer's "To use as ... set assumption=" line. This is the only way
-    /// to disambiguate: the LLM API behind want_ask ignores this parameter.
+    /// to disambiguate: the LLM API behind want_ask ignores this parameter. Check
+    /// the answer's first section; if it still shows the default meaning, the
+    /// value was not applied.
     assumption: Option<String>,
 }
 

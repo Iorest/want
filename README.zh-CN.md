@@ -140,7 +140,7 @@ want skill --install                         # 或直接写进 agent 的目录
 | --- | --- |
 | 0 | 正常输出 |
 | 1 | 其它（网络、解析、意外状态码） |
-| 2 | 用法错误（参数拼错、`--units` 非法） |
+| 2 | 用法错误：参数拼错、`--units` 非法，或 pod 过滤一条都没匹配上 |
 | 3 | 查询没被理解，换个说法 |
 | 4 | 鉴权或配额：没有 AppID、AppID 被拒，或本月额度用完 |
 
@@ -293,9 +293,12 @@ npx -y mcp-proxy --port 8080 -- want mcp
 ## 测试
 
 ```sh
-cargo test                                  # 46 项离线检查，不联网
-WOLFRAM_APPID=... cargo test -- --ignored   # 24 项联网检查，约 45 次调用
+cargo test                                  # 47 项离线检查，不联网
+WOLFRAM_APPID=... cargo test -- --ignored   # 25 项联网检查，约 45 次调用
 ```
+
+其中一项用来验证 key 轮换，需要两个 key。只有一个时加
+`--skip a_pool_rotates_between_real_keys`；忘了加的话该用例会直接失败并给出这条提示。
 
 离线部分覆盖 CLI 表面、skill frontmatter 规范、skill 安装布局、缺 AppID 的路径、AppID
 的取值与优先级（单 key、列表、`--add-appid`）、key 池的轮换、参数校验（未知字段、空查询、

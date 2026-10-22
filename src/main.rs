@@ -180,6 +180,7 @@ fn exit_code(err: &anyhow::Error) -> i32 {
         .downcast_ref::<client::Failure>()
         .map(client::Failure::kind)
     {
+        Some(client::Kind::Usage) => 2,
         Some(client::Kind::Uninterpretable) => 3,
         Some(client::Kind::Access) => 4,
         _ => 1,

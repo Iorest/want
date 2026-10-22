@@ -8,7 +8,8 @@
 //! separately, so a second key doubles the monthly budget; the client rotates
 //! through them and drops one the API rejects.
 
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -142,17 +143,36 @@ pub fn write(appids: &[String]) -> Result<PathBuf> {
                   # This file holds a secret: keep it 0600.\n\
                   # Several keys spread load across quotas: appid = [\"first\", \"second\"].\n";
 
-    std::fs::write(&path, format!("{header}{body}"))
-        .with_context(|| format!("failed to write {}", path.display()))?;
+    write_private(&path, &format!("{header}{body}"))?;
+    Ok(path)
+}
 
+/// Write through a temporary file in the same directory, then rename.
+///
+/// Two reasons: the file is created 0600 rather than chmod'ed from 0644, and a
+/// crash mid-write leaves the previous config intact instead of half a TOML file
+/// that fails to parse on the next run.
+fn write_private(path: &Path, body: &str) -> Result<()> {
+    let tmp = path.with_extension("toml.tmp");
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-            .with_context(|| format!("failed to secure {}", path.display()))?;
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
     }
 
-    Ok(path)
+    let mut file = options
+        .open(&tmp)
+        .with_context(|| format!("failed to open {}", tmp.display()))?;
+    file.write_all(body.as_bytes())
+        .with_context(|| format!("failed to write {}", tmp.display()))?;
+    file.sync_all()
+        .with_context(|| format!("failed to flush {}", tmp.display()))?;
+    drop(file);
+
+    std::fs::rename(&tmp, path).with_context(|| format!("failed to replace {}", path.display()))
 }
 
 /// Warn when the config file is readable by other users.

@@ -157,7 +157,7 @@ Exit codes:
 | --- | --- |
 | 0 | answer printed |
 | 1 | anything else (network, parse, unexpected status) |
-| 2 | usage error (bad flag, bad `--units`) |
+| 2 | usage error: bad flag, bad `--units`, or a pod filter that matched nothing |
 | 3 | query not understood, rephrase it |
 | 4 | auth or quota: no AppID, a rejected one, or the month is spent |
 
@@ -321,9 +321,13 @@ knows how to use them without extra prompting.
 ## Testing
 
 ```sh
-cargo test                                  # 46 offline checks, no network
-WOLFRAM_APPID=... cargo test -- --ignored   # 24 live checks, ~45 API calls
+cargo test                                  # 47 offline checks, no network
+WOLFRAM_APPID=... cargo test -- --ignored   # 25 live checks, ~45 API calls
 ```
+
+One live check proves key rotation and needs two keys. With a single key, add
+`--skip a_pool_rotates_between_real_keys`; the test fails with that instruction if
+you forget.
 
 The offline suite covers the CLI surface, skill frontmatter rules, the skill install
 layout, the missing-AppID path, AppID resolution (single key, list, precedence,

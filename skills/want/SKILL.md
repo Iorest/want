@@ -95,17 +95,21 @@ Work down this ladder. A failed tool call comes back with `isError: true` and a
    server was slow or that sections were missing. Rewording costs a call, so do
    that only when the message says the query was not understood; when it names a
    parameter to change (a larger `maxchars`, an `assumption`), change that instead.
+   If the message says the Short API "has no short answer", the query is fine and
+   this endpoint is the wrong one: switch to `want_ask` or `want_pods`.
 3. Ambiguous query: the answer lists `To use as … set assumption=…` lines. Re-ask
    with the same query and that value, either as `want pods --assumption '<value>'
    '<query>'` or as the `assumption` argument of `want_pods`. `ask` cannot take an
    assumption, and rewording usually lands on the same default meaning again.
+   Then read the first section: if it still shows the meaning you tried to avoid,
+   the value was not applied, so do not present the answer as the other meaning.
    Adding context (`Mars planet` vs `Mars mythology`) also works.
 4. Auth and quota errors will not change with better wording. `401/403` means the
    user has no valid AppID (they fix it with `want config --set-appid <id>`); `429`
    means every configured key has spent its monthly quota. Tell the user once and
    stop. On the command line the exit code says the same thing without parsing:
-   `2` = bad argument, `3` = rephrase, `4` = key or quota, `1` = anything else,
-   `0` = answered.
+   `2` = bad argument (including a pod filter that matched nothing),
+   `3` = rephrase, `4` = key or quota, `1` = anything else, `0` = answered.
 5. Never invent a number, a date or a citation to cover a failed call.
 
 ## Cost
