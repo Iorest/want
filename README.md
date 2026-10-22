@@ -185,7 +185,7 @@ question.
 
 | Type | Where it shows up |
 | --- | --- |
-| Prose and `##` sections | `ask`, `pods` |
+| Prose and sections | `ask` writes `Title:` lines, `pods` writes `##` blocks |
 | Tables (`\|`-separated rows) | `ask`, `pods` |
 | Plots and diagrams | `image: <url>` lines in `pods`, plus `--json` subpods |
 | Unit conversions, timelines, comparisons | additional sections in the same answer |

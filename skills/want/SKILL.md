@@ -73,8 +73,9 @@ without a filter once to read the real titles.
   `— Wolfram|Alpha full-results 2.6 · fetched 2026-10-22T05:25:48Z · query "…"`.
   Keep the date when the value could change (prices, populations, records) and cite
   it; drop it for timeless math. `want_short` returns the bare value, no footer.
-- Sections are `## Title` blocks; rows are `|`-separated; powers use `^`
-  (`6.417 × 10^23`), never `6e14`.
+- `want_pods` writes `## Title` blocks; `want_ask` writes `Title:` lines with the
+  value underneath. Rows are `|`-separated; powers use `^` (`6.417 × 10^23`),
+  never `6e14`.
 - A trailing `(2 section(s) did not finish in time and are missing)` means the
   answer is partial. Re-run the same query once; it is a server-side deadline,
   not a bad query.
@@ -89,11 +90,11 @@ Work down this ladder. A failed tool call comes back with `isError: true` and a
 
 1. Read the message. A `501` may carry "Things to try instead:", and a failed
    parse carries `didyoumeans`, both with alternative phrasings.
-2. Resending the *identical* string is free (the server caches it for 5 minutes)
-   and is the right move when the message says the server was slow or that
-   sections were missing. Rewording costs a call, so do that only when the message
-   says the query was not understood; when it names a parameter to change (a larger
-   `maxchars`, an `assumption`), change that instead.
+2. Resending the *identical* string is free on the MCP server and in the REPL,
+   which cache it for 5 minutes, and is the right move when the message says the
+   server was slow or that sections were missing. Rewording costs a call, so do
+   that only when the message says the query was not understood; when it names a
+   parameter to change (a larger `maxchars`, an `assumption`), change that instead.
 3. Ambiguous query: the answer lists `To use as … set assumption=…` lines. Re-ask
    with the same query and that value, either as `want pods --assumption '<value>'
    '<query>'` or as the `assumption` argument of `want_pods`. `ask` cannot take an
@@ -109,9 +110,9 @@ Work down this ladder. A failed tool call comes back with `isError: true` and a
 
 ## Cost
 
-Every call spends one call from the monthly quota (2,000 per AppID on the free
-tier), shared by every endpoint. `want_short` returns the smallest answer and is
-usually the fastest, but it does not cost less. Over MCP the server caches
+Every call spends one call from the monthly quota: 2,000 per AppID on the free
+tier, where all endpoints share the same pool. `want_short` returns the smallest
+answer and is usually the fastest, but it does not cost less. Over MCP the server caches
 identical queries for 5 minutes, so resending the exact same string is free; a
 *reworded* query is not.
 

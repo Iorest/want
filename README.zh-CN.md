@@ -165,7 +165,7 @@ want ask "what is the GDP of Japan in 2025"
 
 | 类型 | 出现位置 |
 | --- | --- |
-| 正文和 `##` 分节 | `ask`、`pods` |
+| 正文与分节 | `ask` 用 `Title:` 行，`pods` 用 `##` 块 |
 | 表格（`\|` 分隔的行） | `ask`、`pods` |
 | 图、示意图 | `pods` 里的 `image: <url>` 行，`--json` 的 subpod |
 | 单位换算、时间线、对比 | 同一条答案的额外分节 |

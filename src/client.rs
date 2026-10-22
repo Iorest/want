@@ -55,6 +55,21 @@ impl fmt::Display for Failure {
 
 impl std::error::Error for Failure {}
 
+/// One rule for both surfaces: the CLI value parser and the MCP tool check both
+/// ask this, so an empty query means the same thing on either side.
+pub fn is_blank(text: &str) -> bool {
+    text.trim().is_empty()
+}
+
+/// Clap value parser for a query argument.
+pub fn non_empty(value: &str) -> std::result::Result<String, String> {
+    if is_blank(value) {
+        Err("the query must not be empty".to_owned())
+    } else {
+        Ok(value.to_owned())
+    }
+}
+
 fn fail<T>(kind: Kind, message: impl Into<String>) -> Result<T> {
     Err(Failure::new(kind, message).into())
 }
@@ -79,7 +94,7 @@ fn classify_501(body: &str) -> (Kind, &'static str) {
     if body.contains("could not generate a result") {
         return (
             Kind::Other,
-            " (the LLM API says this when the answer cannot fit --maxchars; try a larger value)",
+            " (the LLM API says this when the answer cannot fit maxchars; try a larger value)",
         );
     }
     (Kind::Uninterpretable, "")

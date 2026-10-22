@@ -12,7 +12,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use crate::client::{Client, Opts};
+use crate::client::{self, Client, Opts};
 
 #[derive(Clone)]
 pub struct WantServer {
@@ -171,9 +171,27 @@ impl WantServer {
         if let Some(bad) = check_query(&args.query) {
             return Ok(bad);
         }
-        if args.pod_titles.as_ref().is_some_and(Vec::is_empty) {
+        if let Some(titles) = &args.pod_titles {
+            if titles.is_empty() {
+                return Ok(arg_error(
+                    "`pod_titles` must not be empty; omit it to get every section",
+                ));
+            }
+            if titles.iter().any(|title| client::is_blank(title)) {
+                return Ok(arg_error(
+                    "`pod_titles` contains an empty title; remove it or omit the filter",
+                ));
+            }
+        }
+        // An empty assumption is not a forced interpretation; the API ignores it
+        // and answers with the default meaning while the agent believes otherwise.
+        if args
+            .assumption
+            .as_ref()
+            .is_some_and(|a| client::is_blank(a))
+        {
             return Ok(arg_error(
-                "`pod_titles` must not be empty; omit it to get every section",
+                "`assumption` must not be empty; omit it for the default interpretation",
             ));
         }
 
@@ -198,8 +216,7 @@ impl WantServer {
     instructions = "\
 Tools backed by Wolfram|Alpha: exact math, unit and currency conversion, physical constants, \
 and curated factual data (people, places, chemistry, astronomy, history). Recall is unreliable for \
-numbers, units and dated facts, so compute them here instead of guessing. Every answer carries the \
-time it was fetched; cite that when the value can change.
+numbers, units and dated facts, so compute them here instead of guessing.
 
 Query tips:
 - Ask in plain English, the way a person would: 'how many people live in France' works.
@@ -227,17 +244,14 @@ impl ServerHandler for WantServer {}
 fn arg_error(message: impl std::fmt::Display) -> CallToolResult {
     CallToolResult::error(vec![ContentBlock::text(format!(
         "Invalid tool argument: {message}. Fix the argument and call again; \
-the query itself is fine."
+nothing was sent, so no quota was spent."
     ))])
 }
 
 /// An empty query costs a call and comes back as an API error written for a
 /// developer ("Query Parameter i is required"), so refuse it here.
 fn check_query(query: &str) -> Option<CallToolResult> {
-    query
-        .trim()
-        .is_empty()
-        .then(|| arg_error("`query` must not be empty"))
+    client::is_blank(query).then(|| arg_error("`query` must not be empty"))
 }
 
 /// A failed lookup is a tool result, not a protocol error: hosts show `isError`

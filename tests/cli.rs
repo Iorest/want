@@ -658,7 +658,7 @@ fn lang_option_localises_the_answer() {
 
 #[test]
 #[ignore = "needs WOLFRAM_APPID and consumes API quota"]
-fn every_answer_carries_a_dated_source_line() {
+fn ask_carries_a_dated_source_line() {
     let annotated = live(&["ask", "2+2", "--maxchars", "200"]);
     let text = stdout(&annotated);
     // The footer is what makes a number attributable: which API, when, for what.
@@ -672,6 +672,11 @@ fn every_answer_carries_a_dated_source_line() {
         "{}",
         stdout(&bare)
     );
+
+    // The skill promises a bare value for short, so the absence is part of the
+    // contract, not an accident.
+    let short = live(&["short", "2+2"]);
+    assert!(!stdout(&short).contains("fetched"), "{}", stdout(&short));
 }
 
 #[test]
@@ -746,10 +751,11 @@ fn a_pool_that_is_entirely_dead_still_exits_4() {
 #[ignore = "needs two keys in WOLFRAM_APPID and consumes API quota"]
 fn a_pool_rotates_between_real_keys() {
     let pool = std::env::var("WOLFRAM_APPID").unwrap_or_default();
-    if !pool.contains(',') {
-        eprintln!("skipped: export WOLFRAM_APPID as KEY_ONE,KEY_TWO to run this");
-        return;
-    }
+    assert!(
+        pool.contains(','),
+        "this test proves rotation, so it needs two keys: export WOLFRAM_APPID as \
+         KEY_ONE,KEY_TWO, or skip it with --skip a_pool_rotates_between_real_keys"
+    );
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_want"))
         // stderr is piped here, so the log must arrive without ANSI escapes;
