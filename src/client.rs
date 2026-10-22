@@ -80,7 +80,8 @@ fn classify_501(body: &str) -> (Kind, &'static str) {
 pub struct Opts {
     /// `metric` or `nonmetric`; the API defaults by caller IP.
     pub units: Option<String>,
-    /// Interpretation to force, taken from `didyoumeans` in a prior response.
+    /// Interpretation to force, a value from the `assumptions` list of a prior
+    /// answer.
     pub assumption: Option<String>,
     /// W|A `languagecode`, e.g. `zh`. Localises pod titles and answers.
     pub lang: Option<String>,
@@ -173,7 +174,8 @@ impl Client {
         })
     }
 
-    /// GET with the AppID appended, mapping W|A's status codes onto typed errors.
+    /// GET with the AppID in the `Authorization` header, mapping W|A's status
+    /// codes onto typed errors.
     async fn send(&self, base: &str, params: &[(&str, &str)]) -> Result<reqwest::Response> {
         let mut url = reqwest::Url::parse(base).context("invalid URL")?;
         {

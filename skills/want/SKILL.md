@@ -74,7 +74,8 @@ once to read the real titles.
 Work down this ladder. A failed tool call comes back with `isError: true` and a
 "Next step:" line; the ladder is the same.
 
-1. Read the message. `501` and `didyoumeans` usually carry "Things to try instead:"
+1. Read the message. A `501` usually carries "Things to try instead:", and
+   `success=false` carries `didyoumeans`
    with real alternative phrasings.
 2. Retry **once** with different wording. Never resend the identical string: the
    server caches it and you burn quota for the same answer.

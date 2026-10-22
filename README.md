@@ -288,7 +288,8 @@ cargo fmt --check
 ```
 
 Dependencies: `rmcp` (official MCP Rust SDK), `reqwest`, `clap`, `tokio`,
-`rustyline`, `tracing`, `toml`, `home`, `serde`/`serde_json`, `anyhow`.
+`rustyline`, `tracing`/`tracing-subscriber`, `toml`, `jiff`, `home`,
+`serde`/`serde_json`, `anyhow`.
 
 ## Known limits
 

@@ -263,8 +263,8 @@ cargo clippy --all-targets
 cargo fmt --check
 ```
 
-依赖：`rmcp`（官方 MCP Rust SDK）、`reqwest`、`clap`、`tokio`、`rustyline`、`tracing`、
-`toml`、`home`、`serde`/`serde_json`、`anyhow`。
+依赖：`rmcp`（官方 MCP Rust SDK）、`reqwest`、`clap`、`tokio`、`rustyline`、
+`tracing`/`tracing-subscriber`、`toml`、`jiff`、`home`、`serde`/`serde_json`、`anyhow`。
 
 ## 已知边界
 

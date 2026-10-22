@@ -90,8 +90,8 @@ enum Cmd {
         /// Keep only the pod Wolfram|Alpha marks as primary
         #[arg(long, conflicts_with = "json")]
         primary: bool,
-        /// Force an interpretation, taken from a previous response's didyoumeans.
-        /// Only the Full Results API honours this; `ask` cannot be disambiguated
+        /// Force an interpretation, using a value from a previous answer's assumptions
+        /// list. Only the Full Results API honours this; `ask` cannot be disambiguated
         #[arg(long)]
         assumption: Option<String>,
         /// Print the raw Full Results JSON instead of markdown, keeping every subpod type
