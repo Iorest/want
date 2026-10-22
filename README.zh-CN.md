@@ -8,7 +8,7 @@
 [English](./README.md)
 
 专治大模型最容易出错的那部分。Wolfram|Alpha 解析问题、在整理过的数据上做计算，不是凭记忆
-复述；每个答案都带抓取时间，agent 可以引用这个数字，而不是猜一个。
+复述；`ask` 和 `pods` 的答案都带抓取时间，agent 可以引用这个数字，而不是猜一个。
 
 借鉴自 [`wolfram-cli`](https://github.com/ConnorGray/wolfram-cli)。它封装的是本地
 WolframKernel（走 WSTP），`want` 直接调 Wolfram|Alpha 的 HTTP API，不用装 Wolfram 本体。
@@ -95,7 +95,7 @@ want --appid KEY_ONE --appid KEY_TWO short "2+2"
 ```sh
 want ask "density of osmium vs iridium"      # LLM API：为模型排好版的正文和表格
 want ask "integrate x^2 sin(x)" --maxchars 800
-want short "speed of light"                  # Short Answers：一行答案，最省
+want short "speed of light"                  # Short Answers：一行答案，最短
 want pods "Mars"                             # Full Results：结构化 pods 转 markdown
 want pods --primary "integrate x^2 sin(x)"   # 只留 W|A 标为 primary 的那一节
 want pods --pod "Physical properties" "Mars" # 标题精确匹配，* 是通配符
@@ -284,7 +284,7 @@ npx -y mcp-proxy --port 8080 -- want mcp
 | 工具 | 参数 | 用途 |
 | --- | --- | --- |
 | `want_ask` | `query`、`maxchars?` | 正文、表格、对比、多段答案。是摘要，分节由 W\|A 挑 |
-| `want_short` | `query`、`units?` | 单个数值，最便宜 |
+| `want_short` | `query`、`units?` | 单个数值，返回最短、通常最快 |
 | `want_pods` | `query`、`pod_titles?`、`primary?`、`assumption?` | 全部或指定分节，也能强制解释 |
 
 三个工具都标了 `readOnlyHint: true`。服务端的 `instructions` 里带了查询规则（英文、自然语句
@@ -293,13 +293,14 @@ npx -y mcp-proxy --port 8080 -- want mcp
 ## 测试
 
 ```sh
-cargo test                                  # 44 项离线检查，不联网
-WOLFRAM_APPID=... cargo test -- --ignored   # 22 项联网检查，约 35 次调用
+cargo test                                  # 46 项离线检查，不联网
+WOLFRAM_APPID=... cargo test -- --ignored   # 24 项联网检查，约 45 次调用
 ```
 
 离线部分覆盖 CLI 表面、skill frontmatter 规范、skill 安装布局、缺 AppID 的路径、AppID
-的取值与优先级（单 key、列表、`--add-appid`）、key 池的轮换，以及 MCP 协议（跨全部版本的
-initialize 协商、`server/discover`、工具 schema、只读注解、未知方法和工具、坏 JSON 容错）。
+的取值与优先级（单 key、列表、`--add-appid`）、key 池的轮换、参数校验（未知字段、空查询、
+`maxchars: 0`、空 `pod_titles`），以及 MCP 协议（跨全部版本的 initialize 协商、
+`server/discover`、工具 schema、只读注解、未知方法和工具、坏 JSON 容错）。
 联网部分打四个端点，外加自然语言、`--lang`、出处行、`--primary`、`--pod`、`--json` 的
 图片 subpod、单位制、501 错误路径，以及从失效 key 切到可用 key。
 

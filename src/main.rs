@@ -74,19 +74,22 @@ enum Cmd {
     #[command(visible_alias = "q")]
     Ask {
         /// Natural-language question. English keyword forms work best
+        #[arg(value_parser = non_empty)]
         query: String,
         /// Character cap on the answer; the API default is ~6800
         #[arg(long)]
         maxchars: Option<u32>,
     },
-    /// One-line answer via the Short Answers API; the cheapest call
+    /// One-line answer via the Short Answers API; the smallest and fastest call
     Short {
         /// A question with a single-value answer
+        #[arg(value_parser = non_empty)]
         query: String,
     },
     /// Structured pods via the Full Results API, rendered as markdown
     Pods {
         /// Query
+        #[arg(value_parser = non_empty)]
         query: String,
         /// Keep only pods whose title matches exactly; repeatable, * is a wildcard
         #[arg(long = "pod", value_name = "TITLE")]
@@ -106,6 +109,7 @@ enum Cmd {
     /// Render one image via the Simple API and save it to disk
     Image {
         /// Query, e.g. "plot sin(x)/x from -10 to 10"
+        #[arg(value_parser = non_empty)]
         query: String,
         /// Output path; defaults to want.gif / want.png by image type
         #[arg(short, long)]
@@ -151,6 +155,16 @@ enum Cmd {
         #[arg(long, value_name = "DIR", requires = "skill_action")]
         dir: Vec<PathBuf>,
     },
+}
+
+/// An empty query costs a call and comes back as "Query Parameter i is required",
+/// which reads like a bug; reject it before anything is sent.
+fn non_empty(value: &str) -> std::result::Result<String, String> {
+    if value.trim().is_empty() {
+        Err("the query must not be empty".to_owned())
+    } else {
+        Ok(value.to_owned())
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

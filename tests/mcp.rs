@@ -367,6 +367,54 @@ fn invalid_units_is_a_tool_error() {
     );
 }
 
+#[test]
+fn unknown_arguments_are_rejected_not_ignored() {
+    // The CLI spells the same thing `--pod`. Ignoring the argument used to look
+    // like a successful filter: the agent got the whole card and never knew.
+    let mut lines = open("2025-06-18");
+    lines.push(call(
+        2,
+        "want_pods",
+        json!({"query": "Mars", "pod": ["Result"]}),
+    ));
+
+    let responses = session(&lines, 2);
+    let result = &response(&responses, 2)["result"];
+
+    assert_eq!(result["isError"], true, "{result:#?}");
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("pod"),
+        "{result:#?}"
+    );
+}
+
+#[test]
+fn empty_arguments_are_refused_before_any_request() {
+    let mut lines = open("2025-06-18");
+    lines.push(call(2, "want_short", json!({"query": "   "})));
+    lines.push(call(3, "want_ask", json!({"query": "2+2", "maxchars": 0})));
+    lines.push(call(
+        4,
+        "want_pods",
+        json!({"query": "Mars", "pod_titles": []}),
+    ));
+
+    let responses = session(&lines, 4);
+
+    for id in [2, 3, 4] {
+        let result = &response(&responses, id)["result"];
+        assert_eq!(result["isError"], true, "id {id}: {result:#?}");
+        let text = result["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(text.contains("Invalid tool argument"), "id {id}: {text}");
+        // A stray run of spaces comes from a mangled string continuation, which
+        // no reader would notice but every agent would read.
+        assert!(!text.contains("  "), "id {id} has padded text: {text:?}");
+    }
+}
+
 //==========================================================
 // Live (needs WOLFRAM_APPID)
 //==========================================================
@@ -548,6 +596,51 @@ fn server_units_survive_a_tool_call_without_units() {
         .to_owned();
 
     assert!(text.contains("feet"), "--units was lost: {text}");
+}
+
+#[test]
+#[ignore = "needs WOLFRAM_APPID and consumes API quota"]
+fn want_pods_returns_more_than_the_want_ask_digest() {
+    // The whole point of want_pods: the LLM API picks a subset, so the full card
+    // is longer. If that ever stops being true, the skill is telling a lie.
+    let mut lines = open("2025-06-18");
+    lines.push(call(
+        2,
+        "want_ask",
+        json!({"query": "chicken", "maxchars": 6800}),
+    ));
+    lines.push(call(3, "want_pods", json!({"query": "chicken"})));
+
+    let responses = live(&lines, 3, &["mcp"]);
+
+    let text_of = |id: u64| {
+        response(&responses, id)["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    };
+
+    // The LLM API writes `Title:` lines, the pods renderer `## Title`. A table
+    // row never ends with a colon, so the filter stays on section headers.
+    let ask_text = text_of(2);
+    let pods_text = text_of(3);
+
+    let ask: std::collections::HashSet<&str> = ask_text
+        .lines()
+        .filter_map(|line| line.strip_suffix(':'))
+        .filter(|name| !name.contains('|'))
+        .collect();
+    let pods: std::collections::HashSet<&str> = pods_text
+        .lines()
+        .filter_map(|line| line.strip_prefix("## "))
+        .collect();
+
+    let mut extra: Vec<&&str> = pods.difference(&ask).collect();
+    extra.sort_unstable();
+    assert!(
+        !extra.is_empty(),
+        "want_ask already returns every section, so want_pods has no reason to exist"
+    );
 }
 
 #[test]

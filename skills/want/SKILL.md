@@ -15,8 +15,9 @@ So the rule is short. If the answer is a number, a conversion, a date, or a fact
 that changes, ask `want` before answering. Prose, opinions and code are yours to
 write; measurements, prices, populations, records and formulas are not.
 
-Every reply carries its fetch time, which is what lets you say "as of" instead
-of implying the number is timeless. When Wolfram|Alpha cannot parse the query it
+`want_ask` and `want_pods` end with the fetch time, which is what lets you say
+"as of" instead of implying the number is timeless; `want_short` returns a bare
+value with no date. When Wolfram|Alpha cannot parse the query it
 says so and hands back suggestions, rather than inventing something plausible.
 
 ## Ask in plain language
@@ -28,10 +29,12 @@ phrasing fails. Keyword form (`France population`) is the fallback, not the rule
 
 - English is the input language. For a non-English question, translate it to
   English first, then answer the user in their own language.
-- Add `--lang <code>` (`zh`, `de`, `fr`, …) to get the *answer* localised, e.g.
-  `want --lang zh short "capital of France"` → `法国，法兰西岛大区，巴黎`.
-- `--units` takes exactly `metric` or `nonmetric`; anything else is rejected before
-  the request, because the API would silently answer in the caller-IP units.
+- To localise the *answer*, start the server with `want mcp --lang zh`, or on the
+  command line use `want --lang zh short "capital of France"` → `法国，法兰西岛大区，巴黎`.
+  `--lang` is a process flag, not a tool argument.
+- `--units` takes exactly `metric` or `nonmetric`, and `want_short` also accepts a
+  `units` argument per call. Anything else is rejected before the request, because
+  the API would silently answer in the caller-IP units.
 - One property per call: "Mars mass" then "Mars gravity", not "Mars facts".
 
 ## Picking the call
@@ -84,27 +87,33 @@ without a filter once to read the real titles.
 Work down this ladder. A failed tool call comes back with `isError: true` and a
 "Next step:" line; the ladder is the same.
 
-1. Read the message. A `501` usually carries "Things to try instead:", and a
-   `success=false` carries `didyoumeans`, both with alternative phrasings.
-2. Retry **once** with different wording. Never resend the identical string: the
-   server caches it and you burn quota for the same answer.
+1. Read the message. A `501` may carry "Things to try instead:", and a failed
+   parse carries `didyoumeans`, both with alternative phrasings.
+2. Resending the *identical* string is free (the server caches it for 5 minutes)
+   and is the right move when the message says the server was slow or that
+   sections were missing. Rewording costs a call, so do that only when the message
+   says the query was not understood; when it names a parameter to change (a larger
+   `maxchars`, an `assumption`), change that instead.
 3. Ambiguous query: the answer lists `To use as … set assumption=…` lines. Re-ask
-   with `want pods` (or `want_pods`) and that value; `ask` cannot take an assumption,
-   and rewording will usually land on the same default meaning again. Adding context
-   (`Mars planet` vs `Mars mythology`) also works.
-4. Still failing? Answer from your own knowledge and say the Wolfram|Alpha
-   lookup failed. `401/403` means the user has no valid AppID (they fix it with
-   `want config --set-appid <id>`); `429` means every configured key has spent its monthly quota. Tell
-   the user once instead of retrying. On the command line the exit code says the
-   same thing without parsing: `3` = rephrase, `4` = key or quota, `1` = anything
-   else, `0` = answered.
+   with the same query and that value, either as `want pods --assumption '<value>'
+   '<query>'` or as the `assumption` argument of `want_pods`. `ask` cannot take an
+   assumption, and rewording usually lands on the same default meaning again.
+   Adding context (`Mars planet` vs `Mars mythology`) also works.
+4. Auth and quota errors will not change with better wording. `401/403` means the
+   user has no valid AppID (they fix it with `want config --set-appid <id>`); `429`
+   means every configured key has spent its monthly quota. Tell the user once and
+   stop. On the command line the exit code says the same thing without parsing:
+   `2` = bad argument, `3` = rephrase, `4` = key or quota, `1` = anything else,
+   `0` = answered.
 5. Never invent a number, a date or a citation to cover a failed call.
 
 ## Cost
 
-Every call spends the same monthly quota (2,000 per AppID on the free tier).
-`want_short` is the cheapest. Over MCP the server caches identical queries for 5
-minutes, so a repeat of the exact same string is free; a *reworded* query is not.
+Every call spends one call from the monthly quota (2,000 per AppID on the free
+tier), shared by every endpoint. `want_short` returns the smallest answer and is
+usually the fastest, but it does not cost less. Over MCP the server caches
+identical queries for 5 minutes, so resending the exact same string is free; a
+*reworded* query is not.
 
 The quota is per AppID, and `want` rotates through every key it was given, so a
 second key is a second 2,000. When a `429` reaches you it means every configured

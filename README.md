@@ -9,8 +9,9 @@ MCP server and ships an agent skill.
 [中文](./README.zh-CN.md)
 
 Built for the part a language model gets wrong. Wolfram|Alpha parses the question
-and computes over curated data instead of recalling, and every answer carries the
-moment it was fetched, so an agent can cite a number rather than guess one.
+and computes over curated data instead of recalling, and `ask` and `pods` answers
+carry the moment they were fetched, so an agent can cite a number rather than
+guess one.
 
 Borrowed from [`wolfram-cli`](https://github.com/ConnorGray/wolfram-cli), which wraps a
 local WolframKernel over WSTP. `want` calls the Wolfram|Alpha HTTP API instead, so it
@@ -107,7 +108,7 @@ What happens at runtime:
 ```sh
 want ask "density of osmium vs iridium"      # LLM API: prose and tables shaped for a model
 want ask "integrate x^2 sin(x)" --maxchars 800
-want short "speed of light"                  # Short Answers: one line, cheapest
+want short "speed of light"                  # Short Answers: one line, smallest
 want pods "Mars"                             # Full Results: structured pods -> markdown
 want pods --primary "integrate x^2 sin(x)"   # only the section Wolfram|Alpha calls primary
 want pods --pod "Physical properties" "Mars" # exact title, * is a wildcard
@@ -310,7 +311,7 @@ run concurrently. A burst of questions neither serialises nor double-bills.
 | Tool | Arguments | Use it for |
 | --- | --- | --- |
 | `want_ask` | `query`, `maxchars?` | prose, tables, comparisons, multi-part answers. A digest: Wolfram\|Alpha picks which sections fit |
-| `want_short` | `query`, `units?` | a single value; the cheapest call |
+| `want_short` | `query`, `units?` | a single value; the smallest, fastest call |
 | `want_pods` | `query`, `pod_titles?`, `primary?`, `assumption?` | every section, specific sections, or a forced interpretation |
 
 All three are annotated `readOnlyHint: true`. The server's `instructions` carry the
@@ -320,15 +321,16 @@ knows how to use them without extra prompting.
 ## Testing
 
 ```sh
-cargo test                                  # 44 offline checks, no network
-WOLFRAM_APPID=... cargo test -- --ignored   # 22 live checks, ~35 API calls
+cargo test                                  # 46 offline checks, no network
+WOLFRAM_APPID=... cargo test -- --ignored   # 24 live checks, ~45 API calls
 ```
 
 The offline suite covers the CLI surface, skill frontmatter rules, the skill install
 layout, the missing-AppID path, AppID resolution (single key, list, precedence,
-`--add-appid`), the pool's rotation, and the MCP protocol (initialize negotiation
-across all revisions, `server/discover`, tool schemas, annotations, unknown method
-and tool, malformed JSON). The live suite hits all four endpoints plus natural
+`--add-appid`), the pool's rotation, argument validation (an unknown field, an empty
+query, `maxchars: 0`, empty `pod_titles`), and the MCP protocol (initialize
+negotiation across all revisions, `server/discover`, tool schemas, annotations,
+unknown method and tool, malformed JSON). The live suite hits all four endpoints plus natural
 language, `--lang`, the provenance footer, `--primary`, `--pod`, `--json` image
 subpods, units, the 501 error path, and falling through from a dead key to a
 working one.

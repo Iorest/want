@@ -198,8 +198,9 @@ pub struct Client {
 }
 
 type CacheEntry = (Instant, jiff::Timestamp, Vec<u8>);
-/// What a finished request hands to everyone who was waiting on it.
-type Shared = std::result::Result<(Vec<u8>, jiff::Timestamp), String>;
+/// What a finished request hands to everyone who was waiting on it. The failure
+/// carries its `Kind`, so a follower exits with the same code as the leader.
+type Shared = std::result::Result<(Vec<u8>, jiff::Timestamp), (Kind, String)>;
 
 enum Role<'a> {
     /// First caller: runs the request and answers the followers.
@@ -227,7 +228,10 @@ impl Drop for LeaderGuard<'_> {
             .unwrap_or_default();
 
         for waiter in waiters {
-            let _ = waiter.send(Err("the request for this query was cancelled".to_owned()));
+            let _ = waiter.send(Err((
+                Kind::Other,
+                "the request for this query was cancelled".to_owned(),
+            )));
         }
     }
 }
@@ -318,6 +322,9 @@ impl Client {
             .bearer_auth(self.pool.key(slot))
             .send()
             .await
+            // reqwest puts the whole URL, query included, in its Display. The
+            // comment above promises it does not end up in a log.
+            .map_err(|err| err.without_url())
             .with_context(|| format!("request to {base} failed"))?;
         let status = resp.status().as_u16();
         // Never log the URL: it carries the user's query, which may be private.
@@ -388,7 +395,7 @@ impl Client {
                     tracing::debug!(base, "joined an in-flight request");
                     Ok(shared)
                 }
-                Ok(Err(message)) => Err(anyhow!(message)),
+                Ok(Err((kind, message))) => fail(kind, message),
                 Err(_) => Err(anyhow!("the request for this query was cancelled")),
             },
             Role::Leader(guard) => {
@@ -456,7 +463,11 @@ impl Client {
 
         let shared = match result {
             Ok(value) => Ok(value.clone()),
-            Err(err) => Err(format!("{err:#}")),
+            Err(err) => Err((
+                err.downcast_ref::<Failure>()
+                    .map_or(Kind::Other, Failure::kind),
+                format!("{err:#}"),
+            )),
         };
         for waiter in waiters {
             let _ = waiter.send(shared.clone());
@@ -470,7 +481,11 @@ impl Client {
             // shortcut: entries are dropped on re-query or overflow, never on a
             // timer, so cap the map instead of growing for the process lifetime.
             if cache.len() >= 1024 {
-                cache.clear();
+                // Drop what has already expired before throwing the rest away.
+                cache.retain(|_, (at, _, _)| at.elapsed().as_secs() < opts.cache_ttl);
+                if cache.len() >= 1024 {
+                    cache.clear();
+                }
             }
             cache.insert(key, (Instant::now(), *fetched, bytes.clone()));
         }
@@ -500,8 +515,9 @@ impl Client {
         ))
     }
 
-    /// Short Answers API: a single line, cheapest call. Never annotated, so the
-    /// output stays pipeable as a bare value.
+    /// Short Answers API: a single line, the smallest and fastest call (every
+    /// endpoint still costs one call). Never annotated, so the output stays
+    /// pipeable as a bare value.
     pub async fn short(&self, input: &str, opts: &Opts) -> Result<String> {
         // The API budgets 5s by default, which a localised answer can exceed; a
         // 501 from that budget looks like "could not interpret" but is just slow.
@@ -676,8 +692,8 @@ fn render_pods(input: &str, body: &Value, primary_only: bool, filtered: bool) ->
         if filtered {
             return fail(
                 Kind::Uninterpretable,
-                "No section matched the given --pod title(s). Titles must match exactly \
-                 (a trailing * is a wildcard); drop --pod to see every section.",
+                "No section matched the requested pod titles. Titles must match exactly \
+                 (a trailing * is a wildcard); drop the title filter to see every section.",
             );
         }
         return fail(
@@ -926,6 +942,7 @@ mod tests {
         let err = render_pods("Mars", &body, false, true)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("--pod"), "{err}");
+        // Neutral wording: `--pod` is the CLI spelling, `pod_titles` the tool one.
+        assert!(err.contains("title filter"), "{err}");
     }
 }

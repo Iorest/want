@@ -197,11 +197,32 @@ fn primary_and_json_cannot_be_combined() {
 }
 
 #[test]
+#[ignore = "needs the network: waits for a 401 from the API"]
 fn a_bad_key_exits_4() {
     // 4 is the "fix the key or wait for quota" code.
     let out = run(&["--appid", "definitely-not-a-real-appid", "short", "2+2"]);
 
     assert_eq!(out.status.code(), Some(4), "{}", stderr(&out));
+}
+
+#[test]
+fn an_empty_query_is_a_usage_error() {
+    // The API would answer "Query Parameter i is required", which reads like a
+    // bug and costs a call.
+    for args in [
+        vec!["ask", ""],
+        vec!["short", "   "],
+        vec!["pods", ""],
+        vec!["image", ""],
+    ] {
+        let out = run(&args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", stderr(&out));
+        assert!(
+            stderr(&out).contains("must not be empty"),
+            "{args:?}: {}",
+            stderr(&out)
+        );
+    }
 }
 
 #[test]
@@ -490,7 +511,8 @@ fn pods_primary_returns_exactly_one_section() {
 fn pods_unknown_title_explains_the_filter() {
     let out = live(&["pods", "--pod", "No Such Section", "Mars"]);
     assert!(!out.status.success());
-    assert!(stderr(&out).contains("--pod"), "{}", stderr(&out));
+    // Neutral wording, because the tool argument is `pod_titles`, not `--pod`.
+    assert!(stderr(&out).contains("title filter"), "{}", stderr(&out));
 }
 
 #[test]
