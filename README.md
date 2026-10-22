@@ -1,5 +1,8 @@
 # want
 
+[![ci](https://github.com/Iorest/want/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Iorest/want/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/Iorest/want?label=release)](https://github.com/Iorest/want/releases)
+
 **Wolfram|Alpha Network Tool**: a Rust CLI for Wolfram|Alpha that also runs as an
 MCP server and ships an agent skill.
 

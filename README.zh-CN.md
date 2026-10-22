@@ -1,5 +1,8 @@
 # want
 
+[![ci](https://github.com/Iorest/want/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Iorest/want/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/Iorest/want?label=release)](https://github.com/Iorest/want/releases)
+
 **Wolfram|Alpha Network Tool**：用 Rust 写的 W|A 命令行工具，同时能作为 MCP server 跑，并自带一个 agent skill。
 
 [English](./README.md)
