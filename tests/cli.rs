@@ -250,6 +250,99 @@ fn config_file_is_written_private_and_read_back() {
 }
 
 #[test]
+fn several_appids_are_stored_and_reported_as_a_pool() {
+    let home = std::env::temp_dir().join(format!("want-pool-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home).expect("temp home");
+
+    // Both spellings: the flag repeated, then one comma-separated value.
+    let write = run_at(
+        &home,
+        &[
+            "config",
+            "--set-appid",
+            "FIRSTKEY123",
+            "--set-appid",
+            "SECONDKEY456",
+        ],
+        &[],
+    );
+    assert!(write.status.success(), "{}", stderr(&write));
+    assert!(stdout(&write).contains("2 AppIDs"), "{}", stdout(&write));
+
+    let raw = std::fs::read_to_string(home.join(".config/want/config.toml")).unwrap();
+    assert!(
+        raw.contains("appid = [\"FIRSTKEY123\", \"SECONDKEY456\"]"),
+        "keys were not stored as a list:\n{raw}"
+    );
+
+    let show = run_at(&home, &["config"], &[]);
+    let text = stdout(&show);
+    assert!(text.contains("AppIDs: 2 keys"), "{text}");
+    assert!(text.contains("from config file"), "{text}");
+    for key in ["FIRSTKEY123", "SECONDKEY456"] {
+        assert!(!text.contains(key), "the key was printed: {text}");
+    }
+
+    let comma = run_at(&home, &["config", "--set-appid", "ONE,TWO,THREE"], &[]);
+    assert!(comma.status.success(), "{}", stderr(&comma));
+    let show = run_at(&home, &["config"], &[]);
+    assert!(
+        stdout(&show).contains("AppIDs: 3 keys"),
+        "{}",
+        stdout(&show)
+    );
+
+    // Adding keeps the existing keys, and a repeat does not double the pool.
+    let add = run_at(&home, &["config", "--add-appid", "FOUR"], &[]);
+    assert!(add.status.success(), "{}", stderr(&add));
+    assert!(stdout(&add).contains("4 AppIDs"), "{}", stdout(&add));
+
+    let again = run_at(&home, &["config", "--add-appid", "FOUR"], &[]);
+    assert!(stdout(&again).contains("4 AppIDs"), "{}", stdout(&again));
+
+    // Setting replaces, which is the only way to drop a spent key.
+    let replace = run_at(&home, &["config", "--set-appid", "ALONE"], &[]);
+    assert!(replace.status.success(), "{}", stderr(&replace));
+    let show = run_at(&home, &["config"], &[]);
+    assert!(stdout(&show).contains("AppID: ALON"), "{}", stdout(&show));
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn set_and_add_cannot_be_combined() {
+    // One replaces the stored keys, the other appends to them; asking for both
+    // has no sensible meaning.
+    let home = std::env::temp_dir().join(format!("want-setadd-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home).expect("temp home");
+
+    let out = run_at(
+        &home,
+        &["config", "--set-appid", "ONE", "--add-appid", "TWO"],
+        &[],
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn a_comma_separated_environment_variable_is_a_pool_too() {
+    let home = std::env::temp_dir().join(format!("want-envpool-{}", std::process::id()));
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home).expect("temp home");
+
+    let out = run_at(&home, &["config"], &[("WOLFRAM_APPID", "ENVONE, ENVTWO")]);
+    let text = stdout(&out);
+    assert!(text.contains("AppIDs: 2 keys"), "{text}");
+    assert!(text.contains("from WOLFRAM_APPID"), "{text}");
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
 fn appid_precedence_is_flag_then_env_then_file() {
     let home = std::env::temp_dir().join(format!("want-precedence-{}", std::process::id()));
     std::fs::remove_dir_all(&home).ok();
@@ -573,4 +666,54 @@ fn pods_json_keeps_image_only_sections() {
             .is_some_and(|subs| subs.iter().any(|s| s["img"]["src"].is_string()))
     });
     assert!(has_image, "no image subpod in {}", stdout(&out));
+}
+
+#[test]
+#[ignore = "needs WOLFRAM_APPID and consumes API quota"]
+fn a_rejected_key_falls_through_to_the_next_one() {
+    // The first key cannot work. The answer must still arrive, because the pool
+    // exists precisely so one spent or broken key is not the end of the run.
+    let appid = std::env::var("WOLFRAM_APPID").expect("export WOLFRAM_APPID to run the live tests");
+    let out = Command::new(env!("CARGO_BIN_EXE_want"))
+        .args([
+            "--appid",
+            "definitely-not-a-real-appid",
+            "--appid",
+            &appid,
+            "short",
+            "2+2",
+        ])
+        .env_remove("WOLFRAM_APPID")
+        .output()
+        .expect("failed to run want");
+
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(stdout(&out).trim(), "4");
+    assert!(
+        stderr(&out).contains("retrying with the next one"),
+        "the failover was silent: {}",
+        stderr(&out)
+    );
+}
+
+#[test]
+#[ignore = "needs WOLFRAM_APPID and consumes API quota"]
+fn a_pool_that_is_entirely_dead_still_exits_4() {
+    // Wrapping the per-key error must not turn a quota problem into "something
+    // else broke", which scripts tell apart by exit code.
+    let out = Command::new(env!("CARGO_BIN_EXE_want"))
+        .args([
+            "--appid",
+            "definitely-not-a-real-appid",
+            "--appid",
+            "also-definitely-not-real",
+            "short",
+            "2+2",
+        ])
+        .env_remove("WOLFRAM_APPID")
+        .output()
+        .expect("failed to run want");
+
+    assert_eq!(out.status.code(), Some(4), "{}", stderr(&out));
+    assert!(stderr(&out).contains("all 2 AppIDs"), "{}", stderr(&out));
 }

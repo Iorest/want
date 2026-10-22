@@ -54,6 +54,11 @@ fn fail<T>(kind: Kind, message: impl Into<String>) -> Result<T> {
     Err(Failure::new(kind, message).into())
 }
 
+/// A key the API refused, rather than a query it could not answer.
+fn is_access(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<Failure>().map(Failure::kind) == Some(Kind::Access)
+}
+
 /// A 501 covers three very different failures, and only the body says which:
 /// unparseable input (`Kind::Uninterpretable`), a server timeout, or a result the
 /// LLM API could not render — the last one usually means `--maxchars` is too small.
@@ -108,6 +113,71 @@ impl Opts {
     }
 }
 
+/// The AppIDs to rotate through, and which of them the API has already refused.
+///
+/// The free tier meters every AppID on its own, so two keys mean two budgets.
+/// Rotation also keeps a burst from hammering a single key.
+struct Pool {
+    ids: Vec<String>,
+    state: Mutex<PoolState>,
+}
+
+struct PoolState {
+    /// Index handed out by the last call, so the next one moves on.
+    next: usize,
+    /// Set when a key came back 401/403/429: it cannot serve this process any
+    /// more, and skipping it avoids one wasted round trip per request.
+    dead: Vec<bool>,
+}
+
+impl Pool {
+    fn new(ids: Vec<String>) -> Self {
+        Self {
+            state: Mutex::new(PoolState {
+                next: 0,
+                dead: vec![false; ids.len()],
+            }),
+            ids,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.ids.len()
+    }
+
+    fn key(&self, index: usize) -> &str {
+        &self.ids[index]
+    }
+
+    /// Round-robin over the keys that are still usable. When every key is dead
+    /// the flags are cleared first: a 429 is usually a spent month, but a burst
+    /// limit looks the same and should not disable the pool for good.
+    fn next(&self) -> usize {
+        let mut state = self.state.lock().unwrap();
+        if state.dead.iter().all(|dead| *dead) {
+            state.dead.fill(false);
+        }
+
+        let len = state.dead.len();
+        let mut index = state.next;
+        for _ in 0..len {
+            if !state.dead[index] {
+                break;
+            }
+            index = (index + 1) % len;
+        }
+
+        state.next = (index + 1) % len;
+        index
+    }
+
+    fn mark_dead(&self, index: usize) {
+        if let Some(dead) = self.state.lock().unwrap().dead.get_mut(index) {
+            *dead = true;
+        }
+    }
+}
+
 /// Thin client over the Wolfram|Alpha HTTP endpoints `want` exposes.
 ///
 /// One client lives for the whole process, so the connection pool inside
@@ -115,7 +185,7 @@ impl Opts {
 /// makes an agent asking the same thing twice free.
 pub struct Client {
     http: reqwest::Client,
-    appid: String,
+    pool: Pool,
     /// key -> (TTL clock, fetch time for the provenance line, body)
     cache: Mutex<HashMap<String, CacheEntry>>,
     /// key -> callers waiting for the request that is already running
@@ -158,7 +228,7 @@ impl Drop for LeaderGuard<'_> {
 }
 
 impl Client {
-    pub fn new(appid: &str) -> Result<Self> {
+    pub fn new(appids: Vec<String>) -> Result<Self> {
         let http = reqwest::Client::builder()
             .user_agent(concat!("want/", env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(30))
@@ -168,15 +238,62 @@ impl Client {
 
         Ok(Self {
             http,
-            appid: appid.to_owned(),
+            pool: Pool::new(appids),
             cache: Mutex::new(HashMap::new()),
             inflight: Mutex::new(HashMap::new()),
         })
     }
 
-    /// GET with the AppID in the `Authorization` header, mapping W|A's status
-    /// codes onto typed errors.
+    /// GET with one AppID, trying the others when that key is refused or out of
+    /// quota: the caller sees an answer instead of the first key's bad luck.
+    ///
+    /// Only `401`/`403`/`429` move on to the next key. Every other failure would
+    /// fail the same way on the next one, and retrying it would just burn quota.
     async fn send(&self, base: &str, params: &[(&str, &str)]) -> Result<reqwest::Response> {
+        let mut last: Option<anyhow::Error> = None;
+        let count = self.pool.len();
+
+        for _ in 0..count {
+            let index = self.pool.next();
+
+            match self.send_with(base, params, self.pool.key(index)).await {
+                Ok(resp) => return Ok(resp),
+                Err(err) if is_access(&err) => {
+                    self.pool.mark_dead(index);
+                    if count > 1 {
+                        tracing::warn!(
+                            key = index + 1,
+                            of = count,
+                            "AppID rejected or out of quota; retrying with the next one"
+                        );
+                    }
+                    last = Some(err);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        let err = last.expect("the pool always holds at least one AppID");
+        if count == 1 {
+            return Err(err);
+        }
+
+        // Keep the failure type: an exhausted pool is still exit code 4, not 1.
+        let kind = err
+            .downcast_ref::<Failure>()
+            .map_or(Kind::Other, Failure::kind);
+        fail(
+            kind,
+            format!("all {count} AppIDs failed. Last error: {err:#}"),
+        )
+    }
+
+    async fn send_with(
+        &self,
+        base: &str,
+        params: &[(&str, &str)],
+        appid: &str,
+    ) -> Result<reqwest::Response> {
         let mut url = reqwest::Url::parse(base).context("invalid URL")?;
         {
             let mut pairs = url.query_pairs_mut();
@@ -191,7 +308,7 @@ impl Client {
         let resp = self
             .http
             .get(url)
-            .bearer_auth(&self.appid)
+            .bearer_auth(appid)
             .send()
             .await
             .with_context(|| format!("request to {base} failed"))?;
@@ -648,6 +765,41 @@ fn render_pods(input: &str, body: &Value, primary_only: bool, filtered: bool) ->
 mod tests {
     use super::render_pods;
     use serde_json::json;
+
+    #[test]
+    fn the_pool_rotates_and_skips_dead_keys() {
+        let pool = super::Pool::new(vec!["a".into(), "b".into(), "c".into()]);
+
+        assert_eq!(pool.next(), 0);
+        assert_eq!(pool.next(), 1);
+
+        // A key the API refused is not picked again, so it costs one failed
+        // round trip per process instead of one per request.
+        pool.mark_dead(1);
+        assert_eq!(pool.next(), 2);
+        assert_eq!(pool.next(), 0);
+        assert_eq!(pool.next(), 2);
+    }
+
+    #[test]
+    fn a_fully_dead_pool_is_revived() {
+        let pool = super::Pool::new(vec!["a".into(), "b".into()]);
+        pool.mark_dead(0);
+        pool.mark_dead(1);
+
+        // All dead means "try again", not "give up": a 429 may be a burst limit
+        // rather than a spent month, and the flags must not stick forever.
+        assert_ne!(pool.next(), pool.next());
+    }
+
+    #[test]
+    fn a_single_key_needs_no_rotation() {
+        let pool = super::Pool::new(vec!["only".into()]);
+        assert_eq!(pool.next(), 0);
+        assert_eq!(pool.next(), 0);
+        pool.mark_dead(0);
+        assert_eq!(pool.next(), 0);
+    }
 
     #[test]
     fn renders_pods_as_markdown() {

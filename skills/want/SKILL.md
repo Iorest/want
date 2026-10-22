@@ -94,7 +94,7 @@ Work down this ladder. A failed tool call comes back with `isError: true` and a
    (`Mars planet` vs `Mars mythology`) also works.
 4. Still failing? Answer from your own knowledge and say the Wolfram|Alpha
    lookup failed. `401/403` means the user has no valid AppID (they fix it with
-   `want config --set-appid <id>`); `429` means the monthly quota is gone. Tell
+   `want config --set-appid <id>`); `429` means every configured key has spent its monthly quota. Tell
    the user once instead of retrying. On the command line the exit code says the
    same thing without parsing: `3` = rephrase, `4` = key or quota, `1` = anything
    else, `0` = answered.
@@ -102,6 +102,11 @@ Work down this ladder. A failed tool call comes back with `isError: true` and a
 
 ## Cost
 
-Every call spends the same monthly quota (2,000 on the free tier). `want_short` is
-the cheapest. Over MCP the server caches identical queries for 5 minutes, so a
-repeat of the exact same string is free; a *reworded* query is not.
+Every call spends the same monthly quota (2,000 per AppID on the free tier).
+`want_short` is the cheapest. Over MCP the server caches identical queries for 5
+minutes, so a repeat of the exact same string is free; a *reworded* query is not.
+
+The quota is per AppID, and `want` rotates through every key it was given, so a
+second key is a second 2,000. When a `429` reaches you it means every configured
+key is spent. Tell the user they can add another one with
+`want config --add-appid <new>`, which leaves the existing keys in place.

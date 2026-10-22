@@ -67,6 +67,29 @@ API 非商业用途免费，但必须有 AppID。
 - 取值顺序：`--appid`、`WOLFRAM_APPID`、`~/.config/want/config.toml`。`want config`
   会告诉你是哪个生效。
 
+### 多个 AppID
+
+每个 AppID 各有 2,000 次/月，两个就是 4,000 次。`want` 在给定的 key 之间轮换，某个 key
+被拒就把这次请求换到下一个重试，所以一个额度用完不会让长时间运行的 agent 直接停摆。
+
+```sh
+want config --set-appid KEY_ONE              # 第一个 key
+want config --add-appid KEY_TWO              # 保留 KEY_ONE，把新 key 加进去
+want config --set-appid KEY_ONE,KEY_TWO      # 用这两个覆盖整个文件
+export WOLFRAM_APPID='KEY_ONE,KEY_TWO'       # 或者用环境变量
+want --appid KEY_ONE --appid KEY_TWO short "2+2"
+```
+
+运行时行为：
+
+- 请求轮流使用各个 key，单个 key 不会承担全部突发流量。
+- 返回 `401`、`403` 或 `429` 的 key 在本进程内不再使用，同一次请求立刻换下一个重试；
+  重试会打一行日志，不会静默发生。
+- 所有 key 都用尽时，报错会说明池子里有几个 key，退出码仍是 `4`，脚本的处理方式和
+  只有一个 key 时一致。
+- key 对缓存透明：一个 key 取回的答案，后面不论落到哪个 key 都直接复用。
+- 只有 `401`/`403`/`429` 才会换 key。查询本身解析不了时换 key 结果一样，所以不重试。
+
 ## 命令
 
 ```sh
@@ -81,14 +104,14 @@ want image "plot sin(x)/x from -10 to 10" -o plot.gif
 want --lang zh short "capital of France"     # 中文答案
 want                                         # REPL，:quit 退出
 want repl --mode pods                        # REPL 换端点
-want config                                  # 当前 AppID 及来源
+want config                                  # 当前 AppID 及来源，多个时逐个列出
 want skill                                   # 打印 skill
 want skill --install                         # 或直接写进 agent 的目录
 ```
 
 全局选项：
 
-- `--appid <id>` 覆盖环境变量和配置文件
+- `--appid <id>` 覆盖环境变量和配置文件；可重复，或用逗号分隔多个 key
 - `--lang <code>` 指定答案语言和 pod 标题（`zh`、`de`、`fr`…），**输入**仍是英文
 - `--units metric|nonmetric` 指定单位制，默认按调用方 IP 判断
 - `--no-source` 去掉结尾的出处行
@@ -107,7 +130,8 @@ want skill --install                         # 或直接写进 agent 的目录
 | `pods` | `--json` | 原始 Full Results JSON。不能和 `--primary` 一起用 |
 | `image` | `-o, --output <path>` | 图片写到哪；不写就自动编号 |
 | `repl` | `--mode ask\|short\|pods\|image` | 每行用哪个端点 |
-| `config` | `--set-appid <id>` | 把 AppID 存进配置文件 |
+| `config` | `--set-appid <id>` | 存 AppID，覆盖已有内容 |
+| `config` | `--add-appid <id>` | 追加 AppID，保留已存的 |
 | `skill` | `--install`、`--uninstall`、`--dir <root>` | 写入、移除，或换一个 skills 根目录 |
 
 退出码：
@@ -269,14 +293,15 @@ npx -y mcp-proxy --port 8080 -- want mcp
 ## 测试
 
 ```sh
-cargo test                                  # 36 项离线检查，不联网
-WOLFRAM_APPID=... cargo test -- --ignored   # 19 项联网检查，约 30 次调用
+cargo test                                  # 44 项离线检查，不联网
+WOLFRAM_APPID=... cargo test -- --ignored   # 21 项联网检查，约 35 次调用
 ```
 
-离线部分覆盖 CLI 表面、skill frontmatter 规范、skill 安装布局、缺 AppID 的路径，以及 MCP
-协议（跨全部版本的 initialize 协商、`server/discover`、工具 schema、只读注解、未知方法
-和工具、坏 JSON 容错）。联网部分打四个端点，外加自然语言、`--lang`、出处行、`--primary`、
-`--pod`、`--json` 的图片 subpod、单位制和 501 错误路径。
+离线部分覆盖 CLI 表面、skill frontmatter 规范、skill 安装布局、缺 AppID 的路径、AppID
+的取值与优先级（单 key、列表、`--add-appid`）、key 池的轮换，以及 MCP 协议（跨全部版本的
+initialize 协商、`server/discover`、工具 schema、只读注解、未知方法和工具、坏 JSON 容错）。
+联网部分打四个端点，外加自然语言、`--lang`、出处行、`--primary`、`--pod`、`--json` 的
+图片 subpod、单位制、501 错误路径，以及从失效 key 切到可用 key。
 
 ## 开发
 

@@ -36,9 +36,11 @@ const SKILL_MD: &str = include_str!("../skills/want/SKILL.md");
                   \nExit codes: 0 ok, 2 usage, 3 query not understood, 4 auth or quota, 1 other"
 )]
 struct Cli {
-    /// Wolfram|Alpha AppID. Falls back to WOLFRAM_APPID, then ~/.config/want/config.toml
-    #[arg(long, global = true, hide_env_values = true)]
-    appid: Option<String>,
+    /// Wolfram|Alpha AppID. Repeat it, or separate keys with commas, to spread
+    /// load across several monthly quotas. Falls back to WOLFRAM_APPID, then
+    /// ~/.config/want/config.toml
+    #[arg(long, global = true, value_delimiter = ',', hide_env_values = true)]
+    appid: Vec<String>,
 
     /// Log verbosity on stderr: -v info, -vv debug. RUST_LOG takes precedence
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
@@ -116,11 +118,25 @@ enum Cmd {
     },
     /// Serve MCP over stdio
     Mcp,
-    /// Show which AppID will be used and where it came from, or store one
+    /// Show which AppIDs will be used and where they came from, or store them
     Config {
-        /// Write this AppID to the config file (created 0600)
-        #[arg(long, value_name = "APPID")]
-        set_appid: Option<String>,
+        /// Write these AppIDs to the config file (created 0600), replacing what is
+        /// stored. Repeat the flag or separate keys with commas
+        #[arg(
+            long,
+            value_name = "APPID",
+            value_delimiter = ',',
+            group = "appid_action"
+        )]
+        set_appid: Vec<String>,
+        /// Append these AppIDs to the ones already stored, keeping the pool intact
+        #[arg(
+            long,
+            value_name = "APPID",
+            value_delimiter = ',',
+            group = "appid_action"
+        )]
+        add_appid: Vec<String>,
     },
     /// Print SKILL.md, install it into the agent skill directories, or remove it again
     Skill {
@@ -217,8 +233,12 @@ async fn run() -> Result<()> {
 
     let resolved = config::resolve(cli.appid.clone())?;
 
-    if let Some(Cmd::Config { set_appid }) = &cli.cmd {
-        return show_config(set_appid.as_deref(), resolved.as_ref());
+    if let Some(Cmd::Config {
+        set_appid,
+        add_appid,
+    }) = &cli.cmd
+    {
+        return show_config(set_appid, add_appid, resolved.as_ref());
     }
 
     // DEMO is no longer accepted by the API, so a missing AppID is a hard error
@@ -230,16 +250,15 @@ async fn run() -> Result<()> {
         format!(
             "No Wolfram|Alpha AppID. Get a free one at https://developer.wolframalpha.com, \
              then pick one:\n  \
-             want config --set-appid <id>      # writes {path}\n  \
-             export WOLFRAM_APPID=<id>         # this shell only\n  \
+             want config --set-appid <id>      # writes {path}; repeat for more keys\n  \
+             export WOLFRAM_APPID=<id>         # this shell only, comma-separated for a pool\n  \
              want --appid <id> <command>       # this command only"
         )
     })?;
 
     warn_about_origin(&resolved);
 
-    let appid = resolved.appid;
-    let client = Arc::new(Client::new(&appid)?);
+    let client = Arc::new(Client::new(resolved.appids)?);
     let opts = Opts {
         units: cli.units.clone(),
         lang: cli.lang.clone(),
@@ -305,11 +324,33 @@ fn warn_about_origin(resolved: &config::Resolved) {
     }
 }
 
-/// `want config` — say where the AppID comes from, or store one.
-fn show_config(set_appid: Option<&str>, resolved: Option<&config::Resolved>) -> Result<()> {
-    if let Some(appid) = set_appid {
-        let path = config::write(appid.trim())?;
-        println!("wrote {}", path.display());
+/// `want config` — say where the AppIDs come from, or store them.
+fn show_config(
+    set_appid: &[String],
+    add_appid: &[String],
+    resolved: Option<&config::Resolved>,
+) -> Result<()> {
+    if !set_appid.is_empty() || !add_appid.is_empty() {
+        // `--set-appid` starts from nothing so a dead key can be dropped;
+        // `--add-appid` starts from the file so adding one keeps the rest.
+        let mut ids = if set_appid.is_empty() {
+            config::read()?
+        } else {
+            Vec::new()
+        };
+        let incoming: Vec<&str> = set_appid
+            .iter()
+            .chain(add_appid)
+            .map(String::as_str)
+            .collect();
+        ids.extend(config::split(&incoming.join(",")));
+        // Re-adding a key must not double it, so fold the list once more before
+        // it is written; the count printed is the pool the user will get.
+        let ids = config::split(&ids.join(","));
+
+        let path = config::write(&ids)?;
+        let plural = if ids.len() == 1 { "" } else { "s" };
+        println!("stored {} AppID{plural} in {}", ids.len(), path.display());
         return Ok(());
     }
 
@@ -319,11 +360,22 @@ fn show_config(set_appid: Option<&str>, resolved: Option<&config::Resolved>) -> 
     }
 
     match resolved {
-        Some(resolved) => println!(
+        Some(resolved) if resolved.appids.len() == 1 => println!(
             "AppID: {}  from {}",
-            config::mask(&resolved.appid),
+            config::mask(&resolved.appids[0]),
             resolved.origin.describe()
         ),
+        Some(resolved) => {
+            // Several keys: say how many, and which ones, still masked.
+            println!(
+                "AppIDs: {} keys  from {}",
+                resolved.appids.len(),
+                resolved.origin.describe()
+            );
+            for (i, appid) in resolved.appids.iter().enumerate() {
+                println!("  {}. {}", i + 1, config::mask(appid));
+            }
+        }
         None => println!("AppID: none found"),
     }
 

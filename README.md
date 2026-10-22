@@ -68,13 +68,39 @@ The API is free for non-commercial use but always needs an AppID.
 Notes:
 
 - The free tier is 2,000 calls per month, shared by all Wolfram|Alpha APIs, so
-  `ask`, `short`, `pods` and `image` all draw from the same pool.
+  `ask`, `short`, `pods` and `image` all draw from the same 2,000.
 - Commercial use needs a separate licence. The pricing page only has a sales
   contact form.
 - `DEMO` is no longer accepted (it returns HTTP 401). `want` refuses to start
   without a real AppID rather than sending a request that cannot succeed.
 - Resolution order: `--appid`, then `WOLFRAM_APPID`, then
   `~/.config/want/config.toml`. `want config` prints which one won.
+
+### Several AppIDs
+
+Every AppID has its own 2,000 calls per month, so two keys give you 4,000. `want`
+rotates through whatever it is given and retries a refused key's request on the
+next one, which means a single spent quota no longer stops a long agent session.
+
+```sh
+want config --set-appid KEY_ONE              # first key
+want config --add-appid KEY_TWO              # keeps KEY_ONE, appends the new one
+want config --set-appid KEY_ONE,KEY_TWO      # replaces the file with both
+export WOLFRAM_APPID='KEY_ONE,KEY_TWO'       # or this
+want --appid KEY_ONE --appid KEY_TWO short "2+2"
+```
+
+What happens at runtime:
+
+- Requests go round robin, so no single key takes the whole burst.
+- A key that answers `401`, `403` or `429` is dropped for the rest of the process
+  and the same request is retried on the next key. The retry is logged, not silent.
+- When every key is spent, the error names the pool size and still exits `4`, so
+  scripts behave the same as with one key.
+- Keys are interchangeable for caching: an answer fetched with one is served to
+  the next request whichever key it lands on.
+- Only `401`/`403`/`429` move on to the next key. A query Wolfram|Alpha cannot
+  parse would fail the same way everywhere, so it is not retried.
 
 ## Commands
 
@@ -90,14 +116,15 @@ want image "plot sin(x)/x from -10 to 10" -o plot.gif
 want --lang zh short "capital of France"     # answer in Chinese
 want                                         # REPL, :quit to leave
 want repl --mode pods                        # REPL on another endpoint
-want config                                  # which AppID, and where it came from
+want config                                  # which AppIDs, and where they came from
 want skill                                   # print the skill
 want skill --install                         # or write it where agents look
 ```
 
 Global options:
 
-- `--appid <id>` overrides both the environment and the config file
+- `--appid <id>` overrides both the environment and the config file; repeat it or
+  separate keys with commas to use a pool
 - `--lang <code>` sets the answer language and pod titles (`zh`, `de`, `fr`, …); the
   input stays English
 - `--units metric|nonmetric` sets the unit system, defaulting by caller IP
@@ -119,7 +146,8 @@ Options that belong to one subcommand:
 | `pods` | `--json` | raw Full Results JSON. Cannot be combined with `--primary` |
 | `image` | `-o, --output <path>` | where to write the picture; without it the name is numbered |
 | `repl` | `--mode ask\|short\|pods\|image` | which endpoint each line uses |
-| `config` | `--set-appid <id>` | store an AppID in the config file |
+| `config` | `--set-appid <id>` | store AppIDs, replacing what is on disk |
+| `config` | `--add-appid <id>` | append AppIDs, keeping the stored ones |
 | `skill` | `--install`, `--uninstall`, `--dir <root>` | write it, remove it, or act on another skills root |
 
 Exit codes:
@@ -292,16 +320,18 @@ knows how to use them without extra prompting.
 ## Testing
 
 ```sh
-cargo test                                  # 36 offline checks, no network
-WOLFRAM_APPID=... cargo test -- --ignored   # 19 live checks, ~30 API calls
+cargo test                                  # 44 offline checks, no network
+WOLFRAM_APPID=... cargo test -- --ignored   # 21 live checks, ~35 API calls
 ```
 
 The offline suite covers the CLI surface, skill frontmatter rules, the skill install
-layout, the missing-AppID path, and the MCP protocol (initialize negotiation across
-all revisions, `server/discover`, tool schemas, annotations, unknown method and
-tool, malformed JSON). The live suite hits all four endpoints plus natural language,
-`--lang`, the provenance footer, `--primary`, `--pod`, `--json` image subpods, units
-and the 501 error path.
+layout, the missing-AppID path, AppID resolution (single key, list, precedence,
+`--add-appid`), the pool's rotation, and the MCP protocol (initialize negotiation
+across all revisions, `server/discover`, tool schemas, annotations, unknown method
+and tool, malformed JSON). The live suite hits all four endpoints plus natural
+language, `--lang`, the provenance footer, `--primary`, `--pod`, `--json` image
+subpods, units, the 501 error path, and falling through from a dead key to a
+working one.
 
 ## Development
 

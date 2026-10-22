@@ -1,6 +1,6 @@
 [package]
 name = "want"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "Wolfram|Alpha Network Tool: an AI-native CLI, MCP server and agent skill"
 license = "MIT"
