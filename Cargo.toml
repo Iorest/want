@@ -1,6 +1,6 @@
 [package]
 name = "want"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "Wolfram|Alpha Network Tool: an AI-native CLI, MCP server and agent skill"
 license = "MIT"
@@ -24,3 +24,6 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 [profile.release]
 lto = true
 strip = true
+
+[dev-dependencies]
+serde_yaml_ng = "0.10.0"

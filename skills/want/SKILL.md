@@ -1,6 +1,6 @@
 ---
 name: want
-description: Query Wolfram|Alpha for computed facts instead of recalled ones: exact arithmetic, symbolic math, unit and currency conversion, physical constants, and curated data on people, places, chemistry, astronomy, history, health and finance. Reach for it whenever the answer is a number, a conversion, a date, or a figure that changes over time, and you would otherwise be guessing from memory. Triggers include "calculate", "convert", "how much", "how many", "what is the value of", "how tall", "solve", "integrate", "verify", plus any question carrying units, dates, statistics or records. 计算/换算/求解/多少/密度/人口/价格.
+description: "Query Wolfram|Alpha for computed facts instead of recalled ones: exact arithmetic, symbolic math, unit and currency conversion, physical constants, and curated data on people, places, chemistry, astronomy, history, health and finance. Reach for it whenever the answer is a number, a conversion, a date, or a figure that changes over time, and you would otherwise be guessing from memory. Triggers include \"calculate\", \"convert\", \"how much\", \"how many\", \"what is the value of\", \"how tall\", \"solve\", \"integrate\", \"verify\", plus any question carrying units, dates, statistics or records. 计算/换算/求解/多少/密度/人口/价格."
 ---
 
 # want: Wolfram|Alpha Network Tool

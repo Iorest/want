@@ -68,12 +68,13 @@ fn skill_is_a_valid_agent_skill() {
         .split_once("\n---\n")
         .expect("frontmatter must be closed with ---");
 
-    let field = |key: &str| {
-        front
-            .lines()
-            .find_map(|line| line.strip_prefix(&format!("{key}: ")))
-            .map(str::trim)
-    };
+    // Parse it as YAML, not by scanning lines: an unquoted `: ` inside the
+    // description turns it into a nested mapping and every loader will refuse
+    // the file, which a line scan happily accepts.
+    let front: serde_yaml_ng::Value =
+        serde_yaml_ng::from_str(front).expect("frontmatter must be valid YAML");
+
+    let field = |key: &str| front.get(key).and_then(serde_yaml_ng::Value::as_str);
 
     // Agent Skills name rules: 1-64 chars, lowercase alphanumeric, single hyphens.
     let name = field("name").expect("name is required");
