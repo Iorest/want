@@ -1,17 +1,17 @@
 # want
 
-**Wolfram|Alpha Network Tool** — 用 Rust 写的 W|A 命令行工具，同时是 MCP server 和 agent skill。
+**Wolfram|Alpha Network Tool**：用 Rust 写的 W|A 命令行工具，同时能作为 MCP server 跑，并自带一个 agent skill。
 
 [English](./README.md)
 
-灵感来自 [`wolfram-cli`](https://github.com/ConnorGray/wolfram-cli)。那个项目封装的是本地
-WolframKernel（WSTP），本项目走 Wolfram|Alpha 的 HTTP API，因此不依赖任何 Wolfram 安装。
+借鉴自 [`wolfram-cli`](https://github.com/ConnorGray/wolfram-cli)。它封装的是本地
+WolframKernel（走 WSTP），`want` 直接调 Wolfram|Alpha 的 HTTP API，不用装 Wolfram 本体。
 
-| 入口 | 命令 | 用途 |
+| 入口 | 命令 | 谁用 |
 | --- | --- | --- |
-| CLI / REPL | `want ask "..."`，或直接敲 `want` | 人用 |
-| MCP server | `want mcp` | agent 用，stdio 传输，暴露 `want_ask` / `want_short` / `want_pods` |
-| Skill | `want skill --install` | agent 用，教它**什么时候**该调 W\|A |
+| CLI / REPL | `want ask "..."`，或直接敲 `want` | 人 |
+| MCP server | `want mcp` | agent；stdio 传输，提供 `want_ask` / `want_short` / `want_pods` |
+| Skill | `want skill --install` | agent；告诉它**什么时候**该查 W\|A |
 
 ## 安装
 
@@ -20,89 +20,91 @@ cargo install --path .      # 装到 ~/.cargo/bin/want
 want --version
 ```
 
-下面所有 agent 配置都是用 `want` 这个命令拉起 server 的，所以先把二进制放进 `PATH`。
+下面各个 agent 的接入方式都用 `want` 这个命令起服务，所以先把二进制放进 `PATH`。
 
 ## 获取 AppID
 
-API 对非商业用途免费，但必须有 AppID。
+API 非商业用途免费，但必须有 AppID。
 
-1. 打开 <https://developer.wolframalpha.com>，用 Wolfram ID 登录（没有就用任意邮箱注册，
-   只需邮箱验证，不填任何付款信息）。
+1. 打开 <https://developer.wolframalpha.com>，用 Wolfram ID 登录。没有就随便找个邮箱注册，
+   收一封确认信即可，不用绑卡。
 2. 进 **My Apps**，点 **Sign up to get your first AppID**。
-3. 填一次性用途问卷。个人使用、研究、内部工具都算非商业。
-4. 弹窗里填应用名和一句描述，AppID 立刻生成，形如 `X7WEHY-W45KYJL3C`。
-5. 存一次就行：
+3. 填一次用途问卷。个人使用、研究、内部工具都算非商业。
+4. 弹窗里填应用名和一句描述，AppID 当场生成，形如 `X7WEHY-W45KYJL3C`。
+5. 存一次：
 
    ```sh
    want config --set-appid 'X7WEHY-W45KYJL3C'
    want short "population of France"
    ```
 
-   它会写 `~/.config/want/config.toml`，权限 0600，开新终端不用再管 shell profile。
-   `want config` 会显示正在用哪个 key、来自哪里，key 本身打码。
+   它写进 `~/.config/want/config.toml`，权限 0600，以后开新终端不用再管 shell profile。
+   `want config` 能看当前用的是哪个 key、从哪来的，key 本身打码。
 
-   临时用也可以：
+   只在当前 shell 或单条命令里用也行：
 
    ```sh
    export WOLFRAM_APPID='X7WEHY-W45KYJL3C'   # 只对这个 shell 生效
    want --appid 'X7WEHY-W45KYJL3C' short "population of France"   # 只对这次调用生效
    ```
 
-几个要点：
+几点说明：
 
-- 免费额度是 **2000 次/月**，Wolfram|Alpha 所有 API 共用这个池子，`ask`、`short`、`pods`、
-  `image` 都从里面扣。
-- 商业用途需要单独授权，官网只有询价表单。
-- `DEMO` 已经不被 API 接受（返回 HTTP 401），所以没有 AppID 时 `want` 会直接拒绝启动，
-  而不是发一个注定失败的请求。
-- 读取顺序：`--appid` > `WOLFRAM_APPID` > `~/.config/want/config.toml`。
-  `want config` 会告诉你实际用的是哪个。
+- 免费额度 2,000 次/月，Wolfram|Alpha 所有 API 共用，`ask`、`short`、`pods`、`image`
+  都从这里扣。
+- 商业用途要单独授权，官网只放了销售联系表单。
+- `DEMO` 已经不被 API 接受（返回 HTTP 401）。没有有效 AppID 时 `want` 直接拒绝启动，
+  不会发一个注定失败的请求。
+- 取值顺序：`--appid`、`WOLFRAM_APPID`、`~/.config/want/config.toml`。`want config`
+  会告诉你是哪个生效。
 
 ## 命令
 
 ```sh
-want ask "density of osmium vs iridium"      # LLM API：为模型排版好的正文/表格
+want ask "density of osmium vs iridium"      # LLM API：为模型排好版的正文和表格
 want ask "integrate x^2 sin(x)" --maxchars 800
 want short "speed of light"                  # Short Answers：一行答案，最省
-want pods "Mars"                             # Full Results：结构化 pods → markdown
+want pods "Mars"                             # Full Results：结构化 pods 转 markdown
 want pods --primary "integrate x^2 sin(x)"   # 只留 W|A 标为 primary 的那一节
-want pods --pod "Physical properties" "Mars" # 标题精确匹配，* 是通配
+want pods --pod "Physical properties" "Mars" # 标题精确匹配，* 是通配符
 want pods --json "Mars"                      # 原始 JSON：保留全部 subpod 类型
 want image "plot sin(x)/x from -10 to 10" -o plot.gif
 want --lang zh short "capital of France"     # 中文答案
 want                                         # REPL，:quit 退出
 want repl --mode pods                        # REPL 换端点
-want config                                  # 用的是哪个 AppID，来自哪里
+want config                                  # 当前 AppID 及来源
 want skill                                   # 打印 skill
 want skill --install                         # 或直接写进 agent 的目录
 ```
 
 全局选项：
 
-- `--appid <id>` — 覆盖环境变量与配置文件
-- `--lang <code>` — 答案与 pod 标题的语言（`zh`、`de`、`fr`…），**输入**仍是英文
-- `--units metric|nonmetric` — 单位制，默认按调用方 IP
-- `--no-source` — 去掉出处行
-- `--cache-ttl <秒>` — 相同请求在 N 秒内复用（默认：一次性命令 0，REPL 与 `want mcp` 300）
-- `--assumption <value>`（仅 `pods`）— 强制某种解释，值取自上一次回答里的 `assumption=` 行。
-  `ask` 背后的 LLM API 会忽略这个参数，所以想换个含义只能走 `pods`
-- `-v` / `-vv` — stderr 日志级别，`RUST_LOG` 优先
+- `--appid <id>` 覆盖环境变量和配置文件
+- `--lang <code>` 指定答案语言和 pod 标题（`zh`、`de`、`fr`…），**输入**仍是英文
+- `--units metric|nonmetric` 指定单位制，默认按调用方 IP 判断
+- `--no-source` 去掉结尾的出处行
+- `--cache-ttl <秒>` 相同请求在 N 秒内复用（一次性命令默认 0，REPL 和 `want mcp` 默认 300）
+- `--assumption <value>`（仅 `pods`）强制某种解释，值取自上一条回答里的 `assumption=` 行。
+  `ask` 背后的 LLM API 会忽略这个参数，想换个含义只能用 `pods`
+- `-v` / `-vv` 控制 stderr 日志级别，`RUST_LOG` 优先
 
-退出码，脚本不用解析英文就能分支：
+退出码：
 
 | 码 | 含义 |
 | --- | --- |
 | 0 | 正常输出 |
 | 1 | 其它（网络、解析、意外状态码） |
 | 2 | 用法错误（参数拼错、`--units` 非法） |
-| 3 | 查询没被理解 —— 换个说法 |
-| 4 | 鉴权或配额 —— 换 AppID，或等额度重置 |
+| 3 | 查询没被理解，换个说法 |
+| 4 | 鉴权或配额，换 AppID 或等额度重置 |
 
-`want image` 不会覆盖已存在的图：不给 `-o` 时依次写 `want.gif`、`want-1.gif`……
+脚本按码分支即可，不用解析文字。
+
+`want image` 不会覆盖已有的图。不给 `-o` 时依次写 `want.gif`、`want-1.gif`……
 
 ## 自然语言
 
-Wolfram|Alpha 自己会解析问题，所以直接问，不要先拆成关键词：
+Wolfram|Alpha 自己会断句解析，所以直接把问题丢进去，不用先拆成关键词：
 
 ```sh
 want ask "how many people live in France"
@@ -110,69 +112,69 @@ want short "how tall is Mount Everest in feet"
 want ask "what is the GDP of Japan in 2025"
 ```
 
-关键词写法（`France population`）同样有效，是长句解析失败时的退路。输入必须是英文；中文提问
-会返回 HTTP 501，并附上可用的英文改写建议。`--lang` 翻译的是**答案**，不是问题。
+关键词写法（`France population`）同样有效，长句解析失败时用它兜底。输入必须是英文；中文提问
+会返回 HTTP 501，并附上几个英文改写建议。`--lang` 翻译的是答案，不是问题。
 
-## 一条答案里有什么
+## 答案里有什么
 
 | 类型 | 出现位置 |
 | --- | --- |
-| 正文与 `##` 分节 | `ask`、`pods` |
+| 正文和 `##` 分节 | `ask`、`pods` |
 | 表格（`\|` 分隔的行） | `ask`、`pods` |
 | 图、示意图 | `pods` 里的 `image: <url>` 行，`--json` 的 subpod |
-| 单位换算、时间线、对比 | 同一答案里的额外分节 |
+| 单位换算、时间线、对比 | 同一条答案的额外分节 |
 | 机器可读结构 | `pods --json`（plaintext、img、mathml、imagemap） |
-| 出处 | 末尾一行：API + 版本 + 抓取时间 + 原始查询 |
+| 出处 | 末尾一行：API、版本、抓取时间、原始查询 |
 
-出处行是让数字可核对的东西：
+出处行让数字可以核对：
 
 ```
 — Wolfram|Alpha full-results 2.6 · fetched 2026-10-22T05:25:48Z · query "capital of France"
 ```
 
-`want short` 故意只输出裸值，方便管道取值；需要日期就用 `want ask`。
+`want short` 故意只给裸值，方便管道取值。需要日期就用 `want ask`。
 
-三个端点怎么选：一个问题一个值 → `short`；要正文/表格/对比 → `ask`；只要某几节 → `pods`。
-`ask` 的返回已经是给模型看的形状（分节、`|` 分隔的表格、`image: <url>`），直接喂给 agent 即可。
+端点怎么选：单个数值给 `short`，正文、表格或对比给 `ask`，只要某几节给 `pods`。`ask`
+的输出本身就是给模型看的形状（分节、`|` 分隔的表格、`image: <url>` 行），原样交给 agent
+即可。
 
-pod 标题是精确字符串（`Physical properties`、`Indefinite integral` 之类），只有 `*` 能通配；
-想缩小输出又不想猜标题时，用 `--primary` 比 `--pod` 省事。
+pod 标题是精确字符串（`Physical properties`、`Indefinite integral` 之类），只有 `*` 是通配符。
+想缩小输出又不想猜标题，`--primary` 比 `--pod` 省事。
 
-## 接进 agent
+## 接入 agent
 
-两条命令，全用各 host 自己的安装器——`want` 不提供让你手动维护的配置文件。
+两步，都用客户端自带的安装器，没有需要你手抄的配置文件模板。
 
 ### 1. 注册 MCP server
 
 ```sh
-# Claude Code —— user 作用域，本机所有项目生效
+# Claude Code：user 作用域，本机所有项目生效
 claude mcp add -s user want -- want mcp
 
-# opencode —— 默认写项目配置，加 --global 写用户级
+# opencode：默认写项目配置，加 --global 写用户级
 opencode mcp add want -- want mcp
 
-# Codex —— 写 ~/.codex/config.toml
+# Codex：写 ~/.codex/config.toml
 codex mcp add want -- want mcp
 ```
 
-这三条都是各 host 文档里添加 stdio server 的正规入口，落到的是 host 自己的配置，不是由你
-手写维护的文件。
+这三条都是各客户端官方文档里的注册方式，改的是它们自己的配置。
 
-server 会自己读 `~/.config/want/config.toml`，所以这里不用再传环境变量。不想把 key 落盘
-也可以改回带参数的形式：Claude Code 用 `-e WOLFRAM_APPID=XXXXXXXXXX`，opencode 和 Codex
-用 `--env WOLFRAM_APPID=XXXXXXXXXX`。
+服务端会自己读 `~/.config/want/config.toml`，所以这里不用传环境变量。不想把 key 落盘的话，
+改用带参数的写法：Claude Code 加 `-e WOLFRAM_APPID=XXXXXXXXXX`，opencode 和 Codex 加
+`--env WOLFRAM_APPID=XXXXXXXXXX`。
 
 ```sh
 claude mcp list        # want: want mcp - ✔ Connected
-claude mcp get want    # 查看解析后的命令与环境变量
+claude mcp get want    # 看解析后的命令和环境变量
 claude mcp remove want
 opencode mcp list
 ```
 
-全局选项可以直接跟在 server 命令后面：`want mcp --lang zh` 让 agent 里拿到中文答案，
+全局选项可以直接跟在服务命令后面：`want mcp --lang zh` 让 agent 拿到中文答案，
 `want mcp --cache-ttl 600` 把缓存延长到十分钟。
 
-撤掉也是命令：
+撤销同样有命令：
 
 ```sh
 claude mcp remove want     # Claude Code
@@ -182,65 +184,65 @@ opencode mcp list          # opencode 没有 remove 子命令，确认后改 ope
 
 ### 2. 安装 skill
 
-skill 放在 `skills/want/SKILL.md`，这正是 [skills.sh](https://skills.sh) CLI 扫描的布局，
-所以它能像其它已发布 skill 一样安装：
+skill 放在 `skills/want/SKILL.md`，正好是 [skills.sh](https://skills.sh) CLI 扫描的布局，
+所以能像其他已发布 skill 一样装：
 
 ```sh
-npx skills add <your-github>/want -g -a claude-code -a codex -a opencode
+npx skills add Iorest/want -g -a claude-code -a codex -a opencode
 npx skills list          # 确认装上了
 npx skills update want   # 之后升级
 ```
 
-没有 Node、或只想用本地 checkout 时，二进制自己也能装：
+没有 Node，或者只想用本地 checkout，二进制自己也能装：
 
 ```sh
 want skill --install     # 写 ~/.claude/skills/want 和 ~/.agents/skills/want
-want skill --uninstall   # 装回去还能撤
+want skill --uninstall   # 不想留了就卸掉
 want skill --install --dir ./some/skills-root
 want skill               # 只打印
 ```
 
-用 CLI 装的 skill，对应的是 `npx skills remove want`。
+通过 CLI 装的 skill，对应 `npx skills remove want`。
 
-两条路径落的都是 agent 真正会读的目录：
+两种方式都写进 agent 实际读取的目录：
 
-| Host | 扫描的 skill 目录 |
+| 客户端 | 扫描的 skill 目录 |
 | --- | --- |
 | Claude Code | `~/.claude/skills/`（项目内 `.claude/skills/`） |
 | Codex | `~/.agents/skills/`（项目内 `.agents/skills/`） |
 | opencode | `~/.agents/skills/`、`~/.config/opencode/skills/`、`~/.claude/skills/` |
 
-### 远程 / 跨机器
+### 跨机器
 
-`want mcp` 走 stdio。跨机器就用 SSH 拉起——任何支持「命令 + 参数」的 host 都行：
+`want mcp` 走 stdio。从另一台机器用，套一层 SSH 就行，任何支持「命令加参数」的客户端都能用：
 
 ```sh
 claude mcp add -s user want -- ssh myserver want mcp
 ```
 
-`-e` / `--env` **不会**穿过 SSH 传到远端进程，所以在 `myserver` 上先执行一次
+`-e` / `--env` 不会穿过 SSH 传到远端进程，所以在 `myserver` 上先跑一次
 `want config --set-appid <id>`，或者把 key 放进远端命令：
 `-- ssh myserver want --appid XXXXXXXXXX mcp`。
 
-或者加一层 stdio→HTTP 桥，host 用 HTTP 传输连：
+也可以加一层 stdio 转 HTTP 的桥，让客户端走 HTTP 传输：
 
 ```sh
 npx -y mcp-proxy --port 8080 -- want mcp
 ```
 
-常驻 server 里相同查询缓存 5 分钟，同一时刻的重复请求只打一次上游，工具调用并发执行——
-突发问题既不排队也不重复计费。
+常驻服务里相同查询缓存 5 分钟，同一时刻的重复请求只打一次上游，工具调用并发执行。一串问题
+既不会排队，也不会重复计费。
 
-## MCP 暴露的工具
+## MCP 工具
 
-| 工具 | 参数 | 什么时候用 |
+| 工具 | 参数 | 用途 |
 | --- | --- | --- |
-| `want_ask` | `query`、`maxchars?` | 正文、表格、对比、多段答案 |
+| `want_ask` | `query`、`maxchars?` | 正文、表格、对比、多段答案。是摘要，分节由 W\|A 挑 |
 | `want_short` | `query`、`units?` | 单个数值，最便宜 |
-| `want_pods` | `query`、`pod_titles?`、`primary?` | 指定结果分节、限定输出 |
+| `want_pods` | `query`、`pod_titles?`、`primary?`、`assumption?` | 全部或指定分节，也能强制解释 |
 
-三个工具都标了 `readOnlyHint: true`；server 的 `instructions` 里带了查询改写规则（英文、
-关键词化、一次一个属性），host 不用额外提示词就知道怎么用。
+三个工具都标了 `readOnlyHint: true`。服务端的 `instructions` 里带了查询规则（英文、自然语句
+优先、一次一个属性），客户端不用额外提示词就知道怎么用。
 
 ## 测试
 
@@ -249,10 +251,10 @@ cargo test                                  # 36 项离线检查，不联网
 WOLFRAM_APPID=... cargo test -- --ignored   # 19 项联网检查，约 30 次调用
 ```
 
-离线部分覆盖 CLI 表面、skill frontmatter 规范、skill 安装布局、缺 AppID 路径，以及 MCP 协议
-（跨全部版本的 initialize 协商、`server/discover`、工具 schema、只读注解、未知方法/工具、
-坏 JSON 容错）。联网部分覆盖四个端点，外加自然语言、`--lang`、出处行、`--primary`、`--pod`、
-`--json` 的图片 subpod、units 和 501 错误路径。
+离线部分覆盖 CLI 表面、skill frontmatter 规范、skill 安装布局、缺 AppID 的路径，以及 MCP
+协议（跨全部版本的 initialize 协商、`server/discover`、工具 schema、只读注解、未知方法
+和工具、坏 JSON 容错）。联网部分打四个端点，外加自然语言、`--lang`、出处行、`--primary`、
+`--pod`、`--json` 的图片 subpod、单位制和 501 错误路径。
 
 ## 开发
 
@@ -262,14 +264,14 @@ cargo fmt --check
 ```
 
 依赖：`rmcp`（官方 MCP Rust SDK）、`reqwest`、`clap`、`tokio`、`rustyline`、`tracing`、
-`home`、`serde`/`serde_json`、`anyhow`。
+`toml`、`home`、`serde`/`serde_json`、`anyhow`。
 
 ## 已知边界
 
-- CLI 之间不共享缓存；只有 `want mcp` 带缓存（默认 5 分钟）。
+- 一次性命令不缓存。REPL 和 `want mcp` 默认缓存 5 分钟。
 - `--lang` 只本地化输出，查询本身必须英文。
-- `pods` 只取 `plaintext`，不解析 MathML / imagemap。
-- 商业套餐下 LLM API 与 Full Results API 的额度是分开的。
+- `pods` 输出文字和图片 URL，不解析 MathML 和 imagemap。
+- 商业套餐下，LLM API 和 Full Results API 的额度是分开的。
 
 ## 许可
 

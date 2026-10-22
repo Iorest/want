@@ -14,7 +14,7 @@ memory.
 Wolfram|Alpha parses natural language. Ask the question the way a person would:
 "how many people live in France", "how tall is Mount Everest in feet", "what is
 the GDP of Japan in 2025". Do not pre-chew it into keywords unless the natural
-phrasing fails — keyword form (`France population`) is the fallback, not the rule.
+phrasing fails. Keyword form (`France population`) is the fallback, not the rule.
 
 - English is the input language. For a non-English question, translate it to
   English first, then answer the user in their own language.
@@ -35,7 +35,7 @@ phrasing fails — keyword form (`France population`) is the fallback, not the r
 
 `want_ask` is a digest: Wolfram|Alpha selects the sections that fit an LLM. Asking
 for "all properties" of an animal or a chemical returns noticeably less than the
-website shows — e.g. `Biological properties` is missing for `chicken`. When the user
+website shows. For example, `Biological properties` is missing for `chicken`. When the user
 wants the complete card, use `want_pods`, which returns every pod.
 | Every machine-readable subtopic | `want pods --json` (CLI only) |
 
@@ -51,8 +51,8 @@ want --lang zh short "capital of France"
 ```
 
 Pod titles are exact (`Result`, `Physical properties`, `Indefinite integral`), with
-`*` as the only wildcard. Do not guess a title — use `--primary` or query without a
-filter once to read the real titles.
+`*` as the only wildcard. Do not guess a title. Use `--primary`, or query without a filter
+once to read the real titles.
 
 ## Reading the answer
 
@@ -63,11 +63,11 @@ filter once to read the real titles.
 - Sections are `## Title` blocks; rows are `|`-separated; powers use `^`
   (`6.417 × 10^23`), never `6e14`.
 - A trailing `(2 section(s) did not finish in time and are missing)` means the
-  answer is partial — re-run the same query once; it is a server-side deadline,
+  answer is partial. Re-run the same query once; it is a server-side deadline,
   not a bad query.
 - `image: <url>` lines are plots, diagrams and tables that exist only as pictures.
   Pass them through when the user wants visuals; the URL is public and absolute.
-- `want_ask` output is already model-shaped — do not reformat tables into prose.
+- `want_ask` output is already model-shaped. Do not reformat tables into prose.
 
 ## If a call fails
 
@@ -76,9 +76,9 @@ Work down this ladder. A failed tool call comes back with `isError: true` and a
 
 1. Read the message. `501` and `didyoumeans` usually carry "Things to try instead:"
    with real alternative phrasings.
-2. Retry **once** with different wording. Never resend the identical string — the
+2. Retry **once** with different wording. Never resend the identical string: the
    server caches it and you burn quota for the same answer.
-3. Ambiguous query — the answer lists `To use as … set assumption=…` lines. Re-ask
+3. Ambiguous query: the answer lists `To use as … set assumption=…` lines. Re-ask
    with `want pods` (or `want_pods`) and that value; `ask` cannot take an assumption,
    and rewording will usually land on the same default meaning again. Adding context
    (`Mars planet` vs `Mars mythology`) also works.
@@ -93,4 +93,4 @@ Work down this ladder. A failed tool call comes back with `isError: true` and a
 
 Every call spends the same monthly quota (2,000 on the free tier). `want_short` is
 the cheapest. Over MCP the server caches identical queries for 5 minutes, so a
-repeat of the exact same string is free — a *reworded* query is not.
+repeat of the exact same string is free; a *reworded* query is not.
