@@ -5,6 +5,10 @@ MCP server and ships an agent skill.
 
 [中文](./README.zh-CN.md)
 
+Built for the part a language model gets wrong. Wolfram|Alpha parses the question
+and computes over curated data instead of recalling, and every answer carries the
+moment it was fetched, so an agent can cite a number rather than guess one.
+
 Borrowed from [`wolfram-cli`](https://github.com/ConnorGray/wolfram-cli), which wraps a
 local WolframKernel over WSTP. `want` calls the Wolfram|Alpha HTTP API instead, so it
 needs no Wolfram installation.

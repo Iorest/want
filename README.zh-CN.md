@@ -4,6 +4,9 @@
 
 [English](./README.md)
 
+专治大模型最容易出错的那部分。Wolfram|Alpha 解析问题、在整理过的数据上做计算，不是凭记忆
+复述；每个答案都带抓取时间，agent 可以引用这个数字，而不是猜一个。
+
 借鉴自 [`wolfram-cli`](https://github.com/ConnorGray/wolfram-cli)。它封装的是本地
 WolframKernel（走 WSTP），`want` 直接调 Wolfram|Alpha 的 HTTP API，不用装 Wolfram 本体。
 

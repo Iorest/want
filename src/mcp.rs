@@ -156,8 +156,9 @@ impl WantServer {
     name = "want",
     instructions = "\
 Tools backed by Wolfram|Alpha: exact math, unit and currency conversion, physical constants, \
-and curated factual data (people, places, chemistry, astronomy, history). Prefer these tools over \
-your own recall for anything numeric or date-sensitive.
+and curated factual data (people, places, chemistry, astronomy, history). Recall is unreliable for \
+numbers, units and dated facts, so compute them here instead of guessing. Every answer carries the \
+time it was fetched; cite that when the value can change.
 
 Query tips:
 - Ask in plain English, the way a person would: 'how many people live in France' works.

@@ -1,13 +1,23 @@
 ---
 name: want
-description: Query Wolfram|Alpha for exact math, unit and currency conversion, physical constants, and curated factual data about people, places, chemistry, astronomy, history, health and finance. Use when a question needs a computed or authoritative answer rather than recall — arithmetic, symbolic integration, equation solving, dated statistics, prices, distances, chemical properties, weather, rankings, comparisons, natural-language questions ("how many people live in France", "how tall is Everest in feet"). Triggers include "calculate", "convert", "how much", "how many", "what is the value of", "solve", "integrate", 计算/换算/求解/多少/密度/人口/价格.
+description: Query Wolfram|Alpha for computed facts instead of recalled ones: exact arithmetic, symbolic math, unit and currency conversion, physical constants, and curated data on people, places, chemistry, astronomy, history, health and finance. Reach for it whenever the answer is a number, a conversion, a date, or a figure that changes over time, and you would otherwise be guessing from memory. Triggers include "calculate", "convert", "how much", "how many", "what is the value of", "how tall", "solve", "integrate", "verify", plus any question carrying units, dates, statistics or records. 计算/换算/求解/多少/密度/人口/价格.
 ---
 
-# want — Wolfram|Alpha Network Tool
+# want: Wolfram|Alpha Network Tool
 
-Wolfram|Alpha computes answers instead of guessing them. For anything numeric,
-unit-bearing, date-sensitive or encyclopedic, call `want` before answering from
-memory.
+A language model is a poor calculator and a worse almanac. It misremembers
+constants, drops units halfway through a conversion, and quotes figures that
+went stale after training. Wolfram|Alpha does not recall: it parses the question
+and computes, over curated data and real algorithms, then stamps the reply with
+the moment it was fetched.
+
+So the rule is short. If the answer is a number, a conversion, a date, or a fact
+that changes, ask `want` before answering. Prose, opinions and code are yours to
+write; measurements, prices, populations, records and formulas are not.
+
+Every reply carries its fetch time, which is what lets you say "as of" instead
+of implying the number is timeless. When Wolfram|Alpha cannot parse the query it
+says so and hands back suggestions, rather than inventing something plausible.
 
 ## Ask in plain language
 
