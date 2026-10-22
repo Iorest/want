@@ -1,7 +1,8 @@
 //! `want` — Wolfram|Alpha Network Tool.
 //!
-//! One binary with three faces: a CLI (and REPL) for humans, a `want mcp` stdio
-//! server for agents, and `want skill` which prints the SKILL.md agents load.
+//! A CLI with a REPL for people, a `want mcp` stdio server for agents, and
+//! `want skill` to print, install or remove the SKILL.md they load. `want config`
+//! reports or stores the AppID.
 
 mod client;
 mod config;
@@ -94,8 +95,8 @@ enum Cmd {
         /// list. Only the Full Results API honours this; `ask` cannot be disambiguated
         #[arg(long)]
         assumption: Option<String>,
-        /// Print the raw Full Results JSON instead of markdown, keeping every subpod
-        /// type. Not with --primary, which filters on the client side
+        /// Print the raw Full Results JSON instead of markdown, with every subpod
+        /// it contains. Not with --primary, which filters on the client side
         #[arg(long)]
         json: bool,
     },

@@ -418,8 +418,8 @@ impl Client {
         ))
     }
 
-    /// Raw Full Results JSON, for callers that need every subpod type
-    /// (plaintext, img, mathml, imagemap) instead of the markdown rendering.
+    /// Raw Full Results JSON, for callers that want the subpods themselves
+    /// (plaintext and img) instead of the markdown rendering.
     pub async fn pods_json(
         &self,
         input: &str,

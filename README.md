@@ -150,8 +150,8 @@ question.
 | Tables (`\|`-separated rows) | `ask`, `pods` |
 | Plots and diagrams | `image: <url>` lines in `pods`, plus `--json` subpods |
 | Unit conversions, timelines, comparisons | additional sections in the same answer |
-| Machine-readable structure | `pods --json` (plaintext, img, mathml, imagemap) |
-| Provenance | trailing line: API, version, fetch time, query |
+| Machine-readable structure | `pods --json` (plaintext and img subpods) |
+| Provenance | trailing line: API, fetch time, query, plus the API version when Full Results reports one |
 
 The provenance line makes a number checkable:
 
@@ -309,7 +309,7 @@ Dependencies: `rmcp` (official MCP Rust SDK), `reqwest`, `clap`, `tokio`,
 - One-shot commands keep no cache. The REPL and `want mcp` cache for 5 minutes by
   default.
 - `--lang` localises output only; the query itself must be English.
-- `pods` returns text and image URLs. MathML and imagemap are not parsed.
+- `pods` returns text and image URLs. MathML and imagemap are never requested.
 - On commercial plans the LLM API and Full Results API draw from separate quotas.
 
 ## License

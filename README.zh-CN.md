@@ -136,8 +136,8 @@ want ask "what is the GDP of Japan in 2025"
 | 表格（`\|` 分隔的行） | `ask`、`pods` |
 | 图、示意图 | `pods` 里的 `image: <url>` 行，`--json` 的 subpod |
 | 单位换算、时间线、对比 | 同一条答案的额外分节 |
-| 机器可读结构 | `pods --json`（plaintext、img、mathml、imagemap） |
-| 出处 | 末尾一行：API、版本、抓取时间、原始查询 |
+| 机器可读结构 | `pods --json`（plaintext 和 img 两类 subpod） |
+| 出处 | 末尾一行：API、抓取时间、原始查询；Full Results 还会带版本号 |
 
 出处行让数字可以核对：
 
@@ -283,7 +283,7 @@ cargo fmt --check
 
 - 一次性命令不缓存。REPL 和 `want mcp` 默认缓存 5 分钟。
 - `--lang` 只本地化输出，查询本身必须英文。
-- `pods` 输出文字和图片 URL，不解析 MathML 和 imagemap。
+- `pods` 输出文字和图片 URL，MathML 和 imagemap 根本没请求。
 - 商业套餐下，LLM API 和 Full Results API 的额度是分开的。
 
 ## 许可
