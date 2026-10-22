@@ -20,6 +20,9 @@ cargo install --path .      # 装到 ~/.cargo/bin/want
 want --version
 ```
 
+每个 [release](https://github.com/Iorest/want/releases) 还带 macOS arm64 和 Linux
+x86_64 的预编译包。
+
 下面各个 agent 的接入方式都用 `want` 这个命令起服务，所以先把二进制放进 `PATH`。
 
 ## 获取 AppID

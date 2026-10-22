@@ -22,6 +22,9 @@ cargo install --path .      # installs ~/.cargo/bin/want
 want --version
 ```
 
+Each [release](https://github.com/Iorest/want/releases) also carries prebuilt
+tarballs for macOS arm64 and Linux x86_64.
+
 The agent setups below launch the server as `want`, so put the binary on `PATH`
 first.
 
