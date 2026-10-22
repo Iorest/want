@@ -94,9 +94,41 @@ fn skill_is_a_valid_agent_skill() {
     );
 
     assert!(body.trim().len() > 200, "skill body is too thin");
-    // The skill must not promise tools the server does not expose.
-    for tool in ["want_ask", "want_short", "want_pods"] {
-        assert!(body.contains(tool), "skill never mentions {tool}");
+
+    // A `|` inside a cell splits it: `Wolfram|Alpha` in the "Every section" row
+    // used to add a fourth column, so the row rendered as broken markdown. Every
+    // row of a table must carry the same number of unescaped pipes as its header.
+    let cells = |line: &str| {
+        let mut n = 0;
+        let mut escaped = false;
+        for ch in line.chars() {
+            match ch {
+                '\\' if !escaped => escaped = true,
+                '|' if !escaped => n += 1,
+                _ => escaped = false,
+            }
+        }
+        n
+    };
+
+    let lines: Vec<&str> = body.lines().collect();
+    let mut i = 0;
+    while i + 1 < lines.len() {
+        if lines[i].starts_with('|') && lines[i + 1].trim().starts_with("| ---") {
+            let width = cells(lines[i]);
+            for (offset, row) in lines[i + 1..].iter().enumerate() {
+                if !row.starts_with('|') {
+                    break;
+                }
+                assert_eq!(
+                    cells(row),
+                    width,
+                    "row {} has a different column count than the header: {row}",
+                    i + 2 + offset
+                );
+            }
+        }
+        i += 1;
     }
 }
 

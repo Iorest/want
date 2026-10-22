@@ -40,14 +40,14 @@ phrasing fails. Keyword form (`France population`) is the fallback, not the rule
 | --- | --- |
 | One value, one line | `want_short` / `want short` |
 | Prose, table, comparison, multi-property answer | `want_ask` / `want ask` (default) |
-| **Every** section Wolfram|Alpha has, not a digest | `want_pods` / `want pods` |
+| **Every** section Wolfram\|Alpha has, not a digest | `want_pods` / `want pods` |
 | One specific named section, or bounded output | `want_pods` with `primary: true` or `pod_titles` / `want pods --primary` |
-
-`want_ask` is a digest: Wolfram|Alpha selects the sections that fit an LLM. Asking
-for "all properties" of an animal or a chemical returns noticeably less than the
-website shows. For example, `Biological properties` is missing for `chicken`. When the user
-wants the complete card, use `want_pods`, which returns every pod.
 | Every machine-readable subtopic | `want pods --json` (CLI only) |
+
+`want_ask` is a digest: Wolfram|Alpha selects the sections that fit an LLM.
+Asking for "all properties" of an animal or a chemical returns noticeably less
+than the website shows, `Biological properties` for `chicken` for instance. When
+the user wants the complete card, use `want_pods`, which returns every pod.
 
 Inside an MCP-capable agent the tools `want_ask`, `want_short`, `want_pods` are
 available directly. Otherwise shell out:
@@ -60,9 +60,9 @@ want pods --pod "Physical properties" "Mars"
 want --lang zh short "capital of France"
 ```
 
-Pod titles are exact (`Result`, `Physical properties`, `Indefinite integral`), with
-`*` as the only wildcard. Do not guess a title. Use `--primary`, or query without a filter
-once to read the real titles.
+Pod titles are exact (`Result`, `Physical properties`, `Indefinite integral`),
+with `*` as the only wildcard. Do not guess a title. Use `--primary`, or query
+without a filter once to read the real titles.
 
 ## Reading the answer
 
@@ -84,20 +84,20 @@ once to read the real titles.
 Work down this ladder. A failed tool call comes back with `isError: true` and a
 "Next step:" line; the ladder is the same.
 
-1. Read the message. A `501` usually carries "Things to try instead:", and
-   `success=false` carries `didyoumeans`
-   with real alternative phrasings.
+1. Read the message. A `501` usually carries "Things to try instead:", and a
+   `success=false` carries `didyoumeans`, both with alternative phrasings.
 2. Retry **once** with different wording. Never resend the identical string: the
    server caches it and you burn quota for the same answer.
 3. Ambiguous query: the answer lists `To use as … set assumption=…` lines. Re-ask
    with `want pods` (or `want_pods`) and that value; `ask` cannot take an assumption,
    and rewording will usually land on the same default meaning again. Adding context
    (`Mars planet` vs `Mars mythology`) also works.
-4. Still failing? Answer from your own knowledge and say the Wolfram|Alpha lookup
-   failed. `401/403` means the user has no valid AppID (they fix it with
-   `want config --set-appid <id>`); `429` means the monthly quota is gone. Both are worth telling the user once, not retrying.
-   On the command line the exit code says the same thing without parsing: `3` =
-   rephrase, `4` = key or quota, `1` = anything else, `0` = answered.
+4. Still failing? Answer from your own knowledge and say the Wolfram|Alpha
+   lookup failed. `401/403` means the user has no valid AppID (they fix it with
+   `want config --set-appid <id>`); `429` means the monthly quota is gone. Tell
+   the user once instead of retrying. On the command line the exit code says the
+   same thing without parsing: `3` = rephrase, `4` = key or quota, `1` = anything
+   else, `0` = answered.
 5. Never invent a number, a date or a citation to cover a failed call.
 
 ## Cost
